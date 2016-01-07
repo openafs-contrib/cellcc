@@ -1,0 +1,31 @@
+CellCC ("cell carbon-copy") is a set of tools and daemons to help you
+synchronize volumes between AFS cells. AFS is a distributed network filesystem;
+more information on AFS can be found on <http://www.openafs.org/>.
+
+Why would you want to synchronize volumes between AFS cells? A single
+organization may have multiple AFS cells under its control for any number of
+reasons, including:
+
+ - Compartmentalizing AFS traffic or failures
+ - Raising the max number of RO sites
+ - Delegating cell maintenance duties
+
+If you have such a setup, you may wish to release a volume to multiple cells.
+For example, you may wish to access an application in AFS from any one of the
+local cells in that organization, without needing to access any of the other
+"remote" cells.
+
+CellCC can act as an extended "vos release" in such setups. CellCC synchronizes
+volumes from a "source" AFS cell to a number of "destination" AFS cells,
+relying on plain "vos release" to synchronize volumes within a single AFS cell.
+CellCC also attempts to be robust against failures, allowing for automatic
+retries of idempotent operations and is capable of detailed status reporting.
+
+CellCC is primarily written in Perl; it uses remctl commands and a SQL database
+for network communication.
+
+CellCC is released under the terms of the ISC License. Details on the licensing
+terms are in the LICENSE file in this directory, as well as in the comments at
+the beginning of most source files.
+
+See INSTALL for information about installing and getting started with CellCC.

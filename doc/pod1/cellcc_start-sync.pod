@@ -1,0 +1,62 @@
+=head1 NAME
+
+cellcc_start-sync - Start a volume sync from one AFS cell to another
+
+=head1 SYNOPSIS
+
+B<cellcc start-sync> [B<--queue> <I<qname>>] [B<--delete>] <I<src_cell>>
+    <I<volume_name>>
+
+=head1 DESCRIPTION
+
+The B<cellcc start-sync> command starts syncing a volume from the given source
+cell to all configured destination cells using the CellCC syncing framework.
+
+B<cellcc start-sync> doesn't actually perform the sync itself; it just signals
+the other CellCC components to perform the sync. Thus, B<cellcc start-sync>
+will return as soon as the sync is scheduled; it does not wait until the volume
+has been successfully synced everywhere. Checking on the status of a volume
+sync can be done using the L<cellcc_jobs(1)> command instead.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--queue> <I<qname>>
+
+Specify the queue the volume sync job should be organized under. The queue of a
+sync job just dictates whether the volume will be restored in parallel with
+other volumes or not.
+
+Volumes in different queues will always be able to be restored in parallel with
+one another. Volumes in the same queue will be restricted to a maximum level of
+parallelism configured in the B<restore/queue/qname/max-parallel> configuration
+directive (for a queue that has the name "qname").
+
+If the queue is not specified, the sync job will be treated as in the queue
+"default". The "default" queue always exists, and by default has a max
+parallelism of 1.
+
+=item B<--delete>
+
+If this flag is specified, B<cellcc start-sync> will delete the specified
+volume in all destination cells, instead of trying to sync data.
+
+It is intended to run this command after the volume has been deleted in the
+source cell. B<cellcc start-sync> checks first if the volume still exists in
+the source cell, and throws an error if the volume still exists.
+
+=back
+
+=head1 PRIVILEGE REQUIRED
+
+The issuer of this command must be able to read the "admin" CellCC
+configuration, typically in B</etc/cellcc/cellcc_admin.json>, which allows
+write operations to the CellCC system. Typically this is only allowed for
+administrators or accounts dedicated to this "syncing" functionality.
+
+=head1 COPYRIGHT
+
+Copyright (c) 2015, Sine Nomine Associates.
+
+See the provided LICENSE file for licensing terms.

@@ -1,0 +1,11 @@
+# Change cellcc@REALM.EXAMPLE.COM below to the principal specified in the
+# 'remctl/princ' directive in your cellcc configuration.
+#
+# Note that cellcc does its own authorization checks, separately from remctl.
+# So you can just specify "ANYUSER" as the last field (instead of
+# "princ:foo@BAR"), and let cellcc handle checking the authorization according
+# to the cellcc configuration. However, it is more secure to have remctl itself
+# check it before the command is run, so that is what is recommended.
+
+# Uncomment the following line to enable remctl access for cellcc.
+#cellcc remctl /usr/bin/cellcc princ:cellcc@REALM.EXAMPLE.COM

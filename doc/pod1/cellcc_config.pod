@@ -1,0 +1,564 @@
+=head1 NAME
+
+cellcc_config - View or check CellCC configuration
+
+=head1 SYNOPSIS
+
+B<cellcc config> <B<--check> | B<--dump> | B<--dump-all> | <I<key>>>
+
+=head1 DESCRIPTION
+
+The B<cellcc config> command allows the caller to retrieve the value of various
+CellCC configuration directives, or export the whole CellCC configuration, or
+check if the configuration is valid.
+
+CellCC will try to load the "admin" configuration (typically in
+B</etc/cellcc/cellcc_admin.json>), in addition to the public non-admin
+configuration (typically in B</etc/cellcc/cellcc.json>). If the caller does not
+have access to the "admin" configuration, a warning is shown, but otherwise the
+command proceeds without error.
+
+=head1 OPTIONS
+
+=over 4
+
+=item <I<key>>
+
+If none of the other options are specified, the given argument is assumed to be
+a configuration directive. B<cellcc config> will grab the key from the local
+configuration, and print out the value to stdout. If the value is not a plain
+scalar value (that is, if it is an array or hash), the value will be printed in
+JSON.
+
+=item B<--check>
+
+This will check all known configuration directives, and see if they either have
+a value configured, or a default. This will also check if the configuration
+file is readable and for any other obvious errors.
+
+If any configuration errors are found, the command exits with return code 0.
+Otherwise, a list of errors is printed to standard error and the command exits
+with a nonzero exit status.
+
+Note that just because B<cellcc config --check> doesn't report any errors,
+doesn't necessary mean that a configuration is usable. It is of course possible
+to specify cells that don't exist, hostnames that don't exist, files that don't
+exist, etc. This just performs a basic check to see that the config files are
+readable and that config directives without defaults are specified.
+
+=item B<--dump>, B<--dump-all>
+
+These dump the configuration data to stdout, in JSON format. The difference
+between B<--dump> and B<--dump-all> is that B<--dump> just tries to export
+information that is actually specified in a configuration file, and omits
+exporting default values. On the other hand, B<--dump-all> tries to export all
+values that will be used by CellCC.
+
+It is not feasible to actually print all possible values for configuration
+directives, since some parameterized directives (like per-cell or per-queue
+directives) may take on any number of takes. But for most config directives,
+this will print out the configured values.
+
+=back
+
+=head1 CONFIG FILES
+
+The non-admin "public" configuration file is typically
+B</etc/cellcc/cellcc.json>. This is where most config directives go, and
+anything that is considered non-sensitive should be placed in that file.
+
+There is another file, the "admin" config file, typically
+B</etc/cellcc/cellcc_admin.json>, which is used for storing more "sensitive"
+information. Specifically, this is to store the read-write database
+credentials. This is separated so that unauthenticated users can run commands
+like, for example, B<cellcc jobs>, which do not require read-write database
+access. But commands like B<cellcc start-sync> can be restricted to
+administrators who have read access to the credentials in B<cellcc_admin.json>.
+
+=head1 CONFIGURATION FORMAT
+
+The configuration file format is JSON, with a few small variations to allow
+greater ease of use. Specifically, elements can be succeeded by a comma, even
+when they are the last element in a list or hash. Comments are also allowed
+using the hash symbol "#" or C++-style commands, using //.
+
+Note that in the B<cellcc config> command and other CellCC commands,
+configuration keys are separated by a slash, like so: "db/rw/dsn". This is
+different from normal JSON notation, which would normally refer to such an
+element like "db.rw.dsn".  This is simply done because our configuration keys
+include dots much more often than slashes, and so slashes are just more
+convenient.
+
+=head1 CONFIGURATION DIRECTIVES
+
+=over 4
+
+=item B<db/ro/dsn>
+
+The DSN to use for read-only access to the central database. For example:
+"DBI:mysql:database=cellcc;host=db.example.com;port=3306" will configure a
+mysql database called "cellcc" on host db.example.com using port 3306.
+
+=item B<db/ro/user>, B<db/ro/pass>
+
+The username and password to use when connecting to the B<db/ro/dsn> database.
+
+=item B<db/rw/dsn>, B<db/rw/user>, B<db/rw/pass>
+
+These are the same as their B<db/ro> equivalents, but for read-write database
+access. B<db/rw/dsn> is optional, and will default to the value specified in
+B<db/ro/dsn>.
+
+=item B<cells/><I<cell>>B</dst-cells>
+
+This is an array of cells that <I<cell>> should sync volumes to. For example,
+setting B<cells/source.example.com/dst-cells> to ["na.example.com",
+"eu.example.com"] indicates that volumes in the cell B<source.example.com>
+should be synced to the cells B<na.example.com> and B<eu.example.com>.
+
+=item B<volume-filter/command>
+
+If this is specified, this command is run by B<cellcc start-sync> to determine
+if a volume should be synced. The command is run with the following environment
+variables:
+
+=over 4
+
+=item CELLCC_FILTER_VOLUME
+
+The name of the volume to be synced.
+
+=item CELLCC_FILTER_SRC_CELL
+
+The name of the cell we're syncing from.
+
+=item CELLCC_FILTER_DST_CELL
+
+The name of the cell we're syncing to.
+
+=item CELLCC_FILTER_QNAME
+
+The name of the queue for the sync job.
+
+=item CELLCC_FILTER_OPERATION
+
+This is set to one of the following values:
+
+=over 4
+
+=item C<sync>
+
+This means cellcc is sending new data to the volume in the destination cell.
+
+=item C<delete>
+
+This means cellcc is deleting the volume in the destination cell.
+
+=back
+
+=back
+
+The command must print the string "exclude" or "include" by itself on a single
+line on stdout. If the command prints "exclude", then the volume is not synced.
+If the command prints "include", then the volume is synced. The command also
+must return with an exit code of 0, or else it is assumed that it encountered
+some fatal error.
+
+By default, we "include" all volumes. That is, all volumes are synced when
+given to B<cellcc start-sync>.
+
+=item B<vos/localauth>
+
+If set to 1, then we will use B<-localauth> for authenticated B<vos> commands.
+Otherwise, we will try to authenticate using a keytab via B<k5start>.
+
+This defaults to 0.
+
+=item B<vos/command>
+
+This indicates the command to use for running B<vos> commands. The default is
+just "vos".
+
+=item B<vos/princ>
+
+When not running in B<-localauth> mode, this indicates the principal we should
+authenticate to AFS as in order to run authenticated B<vos> commands. By
+default, this is set to null, which means we will pick the first principal name
+in the keytab specified by B<vos/keytab>.
+
+This has no effect if localauth mode is turned on.
+
+=item B<vos/keytab>
+
+When not running in localauth mode, this indicates the keytab we should use to
+authenticate to AFS in order to run authenticated B<vos> commands.
+
+This defaults to B</etc/cellcc/vos.keytab>. This has no effect if localauth
+mode is turned on.
+
+=item B<k5start/command>
+
+For commands which need k5start for authentication, this provides the command
+to use for k5start. Defaults to "k5start".
+
+=item B<aklog/command>
+
+This specifies the command to use for running aklog. We need to run aklog when
+running B<vos> in non-localauth mode in order to authenticate to AFS.
+
+Defaults to "aklog".
+
+=item B<log/level>
+
+Sets our default global logging level. Possible values are "debug", "info",
+"warn", and "error". Defaults to "info".
+
+=item B<log/config>
+
+If specified, CellCC will use the given Log4Perl or Log4j configuration file
+for logging in daemon processes. See the Log::Log4Perl or Log4j documentation
+for details.
+
+By default, CellCC uses an internally-generated configuration that logs to the
+syslog "daemon" facility. If our log level is "debug", we also log to stderr.
+
+=item B<fqdn>
+
+This indicates the fully-qualified domain name of the running host. By default
+this uses the Perl Sys::Hostname module to determine the local hostname, but
+you can override that by specifying a value here.
+
+Note that it doesn't make much sense to specify this in a config file that is
+shared amongst several machines. It is still useful, though, if the machines do
+not share the same configuration file, or if you specify this option using the
+B<-x> command-line option.
+
+=item B<remctl/port>
+
+This specifies the port to use for remctl communication. The restore-server and
+dump-server communicate with each other using remctl.
+
+=item B<remctl/princ>
+
+This specifies the krb5 principal to authenticate as when communicating over
+remctl. This has no default, and we cannot automatically determine the
+principal to use, since the remctl server needs to know what principal is
+allowed to execute commands.
+
+=item B<remctl/service>
+
+This specifies the service principal to use when communicating over remctl (the
+B<-s> option to the B<remctl> command-line command).
+
+By default this is B<host/<FQDN>>, including the literal greater-than and
+less-than signs. Any instance of the string "<FQDN>" in this directive will be
+replaced by the hostname that we are trying to contact.
+
+=item B<remctl/client-keytab>
+
+This specifies the keytab file we should use when authenticating to communicate
+over remctl. By default, we use B</etc/cellcc/remctl-client.keytab>.
+
+=item B<remctl/command>
+
+The command to run when using remctl to communicate. Note that CellCC runs the
+actual B<remctl> command, instead of using any remctl perl bindings. (It's just
+easier to wrap the command in k5start that way.)
+
+By default this is just "remctl".
+
+=item B<pick-sites/command>
+
+This specifies the command to run when the restore-server needs to determine
+what servers to create a volume on. That is, when the restore-server restores a
+volume, if the volume already exists, the restore-server just restores the
+volume to the existing location. But if the volume does not already exist, the
+restore-server needs to know what server to B<vos create> on, and which to
+B<vos addsite> on.
+
+Since this decision can be dynamic, the restore-server determines this by
+running this "pick-sites" command.
+
+The command is run with the following environment variables:
+
+=over 4
+
+=item CELLCC_PS_VOLUME
+
+The volume name to be created
+
+=item CELLCC_PS_SRC_CELL
+
+The name of the "source" cell we are syncing from.
+
+=item CELLCC_PS_DST_CELL
+
+The name of the "destination" cell, where the new volume will be created.
+
+=item CELLCC_PS_CELL
+
+This is identical to CELLCC_PS_DST_CELL. It is only provided for backwards
+compatibility purposes.
+
+=back
+
+The command must output a list of sites to use for the volume. The first site
+specified will be used as the RW site, as well as an RO site. The remaining
+sites will be used as RO sites. For each site, the command must output a single
+line on stdout in the format:
+
+    servername partition
+
+For example, to create new volumes on fs1.example.com vicepa, with RO copies on
+fs1.example.com vicepa, fs3.example.com vicepd, and fs10.example.com vicepb,
+the script should output the following on stdout:
+
+    fs1.example.com vicepa
+    fs3.example.com vicepd
+    fs10.example.com viceb
+
+The script must also exit with exit status 0. If a non-zero exit status is
+detected, the sync job will fail.
+
+=item B<dump/monitor-intervals>
+
+This indicates how frequently the dump-server will monitor progress of dumps,
+and report that progress to the central database. This is an array, and each
+item in that array indicates how many seconds to wait for that interval.
+
+For example, setting this to "[1,2,5]" will cause the dump-server to report
+status after 1 second, then report status after 2 seconds, and then report
+status after every 5 seconds thereafter.
+
+=item B<dump/checksum>
+
+This indicates what checksum algorithm to use when verifying volume dump blobs.
+The default is MD5, which is not as cryptographically secure as other
+algorithms, but is fast. The algorithm specified here does not need to be
+cryptographically secure, since the volume blobs are coming from trusted
+sources. The purpose of this checksum is just to check if any errors have
+caused the volume blob to become corrupted in transit.
+
+=item B<dump/scratch-dir>
+
+This is the directory the dump-server puts volume blobs in, after they have
+been dumped to disk and before they have been retrieved by a restore-server.
+This defaults typically to B</var/lib/cellcc/dump-scratch>.
+
+=item B<dump/scratch-minfree>
+
+When we dump a volume to B<dump/scratch-dir>, we check if there will be at
+least B<dump/scratch-minfree> bytes still free after we do the dump. This
+allows a kind of safety byffer to try to avoid filling up the disk that the
+scratch dir is on.
+
+If this directive is set to null, this check is completely skipped; we don't
+look at the amount of disk space free on the scratch dir at all.
+
+This directive can be just a plain number, or it can have a suffix of K, M, G,
+T, P, E, or Z, corresponding to kilobytes, megabytes, etc. The non-suffix part
+of this value must be a plain integer.
+
+For example, you can specify "104857600", or "100M". The default value is
+"100M".
+
+=item B<dump/check-interval>
+
+This indicates how often (in seconds) the dump-server checks for new sync jobs
+to appear. The default is 60 seconds.
+
+=item B<dump/max-parallel>
+
+This indicates how many dumps a dump-server will perform in parallel. The
+default is 10.
+
+=item B<dump/incremental/enabled>
+
+This indicates whether CellCC will use incremental volume dumps. If set to 0,
+CellCC will always perform a full dump of the relevant volume from the source
+cell. If set to 1, CellCC will try to dump only the changes needed from the
+source cell, and apply those changes to the volume in the destination cell.
+
+If incremental dumps are enabled, CellCC will determine what data to dump by
+inspecting the volume in the destination cell from the relevant CellCC
+dumpserver. Thus, the server running the CellCC dumpserver for the destination
+cell C<dest.example.com> must be able to run "vos examine" commands for volumes
+in the cell C<dest.example.com>. CellCC does not need any authentication to do
+this, but the relevant firewall rules may need to be adjusted to allow this to
+occur. If CellCC cannot run those commands successfully, syncs will fail as
+long as incremental dumps are enabled.
+
+The default value is 0. If the above statements about needing to run "vos
+examine" from the CellCC dumpserver machine are not a problem for you, you will
+probably want to enable this, since it usually reduces the bandwidth and load
+generated by CellCC significantly.
+
+=item B<dump/incremental/skip-unchanged>
+
+By default, if incremental dumps are enabled, CellCC will always dump at least
+a little bit of data to sync a volume, even if the volume has not changed at
+all since the last sync. This is the same as the behavior in the OpenAFS "vos
+release" command, and this occurs because it is difficult to be certain that an
+AFS volume has not changed.
+
+However, CellCC can make a reasonable guess if a volume has not changed since
+the last sync. This is not guaranteed to always be correct, but if CellCC
+guesses incorrectly, the only problem is that a volume is not synced, when it
+should be synced; data will not become corrupted or anything like that.
+
+Setting this option to 1 tells CellCC to skip syncing volumes if it looks like
+the volume has not changed since the last sync. Setting it to 0 makes CellCC
+always sync at least a little bit of data each time.
+
+The default value is 0.
+
+=item B<dump/incremental/fulldump-on-error>
+
+By default, if an error occurs while CellCC is examining the metadata for the
+remote volume to calculate an incremental dump, the sync will fail (just like
+for any other error). Setting this value to 1 will instead cause CellCC to
+fallback to performing a full dump for the volume, instead of an incremental
+dump.
+
+The default value is 0.
+
+=item B<restore/monitor-intervals>
+
+This is the same as B<dump/monitor-intervals>, but is for the restore-server
+when performing volume restores.
+
+=item B<restore/scratch-dir>
+
+This is the directory the restore-server will use for storing volume blobs
+retrieved from a dump-server, before the volume has been restored to OpenAFS.
+The default is typically B</var/lib/cellcc/restore-scratch>.
+
+=item B<restore/scratch-minfree>
+
+This is the same as B<dump/scratch-minfree>, but for the restore-server instead
+of the dump-server. See B<dump/scratch-minfree>.
+
+=item B<restore/check-interval>
+
+This is identical to B<dump/check-interval>, but for the restore-server instead
+of the dump-server.
+
+=item B<restore/queues/><I<qname>>B<max-parallel>
+
+This indicates how many restores the restore-server will perform in parallel
+for volume sync jobs in the queue named by <I<qname>>. An explanation of queues
+can be found in the manpage for L<cellcc_start-sync(1)>.
+
+=item B<xfer/monitor-intervals>
+
+This is the same as B<dump/monitor-intervals>, but is for the restore-server
+when transferring volume blobs from a dump-server.
+
+=item B<release/monitor-intervals>
+
+This is the same as B<dump/monitor-intervals>, but is for the restore-server
+when releasing a volume to the local cell.
+
+=item B<check/check-interval>
+
+This is identical to B<dump/check-interval>, but is for the check-server, and
+indicates how often the check-server checks all running jobs for errors.
+
+=item B<check/error-limit>
+
+When a stage in a sync job fails, the job is marked as failing, but the
+check-server will retry the job starting at the last successful stage. If this
+is done more than B<check/error-limit> times, the check-server assumes the
+volume will not proceed, and permanently stops the sync job until someone runs
+the B<cellcc retry-job> command, or the job is killed dwith B<ccc-debug
+kill-job> or something similar.
+
+This defaults to 5, so a job will be retried 5 times.
+
+=item B<check/alert-errlimit-interval>
+
+When a stage in a sync job fails more than B<check/error-limit> times, cellcc
+will send an ALERT_ERRORLIMIT alert for that sync job. However, the state of
+the sync job has not changed, so ALERT_ERRORLIMIT alerts will continue to be
+sent for that job if it is not immediately fixed.
+
+To avoid alerts from constantly being sent, ALERT_ERRORLIMIT alerts are only
+sent at most once per job every B<check/alert-errlimit-interval> seconds. The
+default value is 6 hours, so ALERT_ERRORLIMIT alerts will not be sent for the
+same job more frequently than once every 6 hours.
+
+=item B<check/alert-stale-seconds>
+
+This specifies how stale a job must be, in seconds, before the check-server
+will send an alert about it. A job is "stale" if no CellCC stage has updated
+the job at all in a certain amount of time.
+
+A "stale" job is not necessarily an error, but maybe indicates a "stuck" sync
+job.
+
+The default is 30 minutes.
+
+=item B<check/alert-old-seconds>
+
+This specifies how old a job must be, in seconds, before the check-server will
+send an alert about it. A job is "old" if it has just been running for more
+than a certain amount of time, regardless of how long it has been since the
+last update.
+
+An "old" job is not necessarily an error, but maybe warrants investigation as
+to why a sync may take so long.
+
+The default is 24 hours.
+
+=item B<check/alert-cmd/txt>
+
+This specifies a command to run to alert the administrators of errors during
+volume syncs. The alerts will be given to the command on standard input, and
+will be formatted as plain human-readable text.
+
+Such a command might send an email or alert some other notification system.
+This is null by default, in which case, no command is run.
+
+=item B<check/alert-cmd/json>
+
+This is the same as B<check/alert-cmd/json>, except that the alerts are
+formatted as JSON objects.
+
+To see exactly what such a generated object looks like, you can use the
+B<ccc-debug test-alert> command to generate a set of fake alerts. Just run that
+command, possibly with "-x check/alert-cmd/json=/path/to/command" in order to
+test what happens when alerts are generated.
+
+=item B<check/alert-log>
+
+This is like B<check/alert-cmd/txt>, but instead of running a command for any
+alerts, the alert information is just logged like any other warning message
+that CellCC might generate. Set this to 1 to log alerts in this way, or 0 to
+turn this off.
+
+By default, this is set to 1.
+
+=item B<check/archive-jobs>
+
+If set to 1, jobs that finish successfully will be copied to a C<jobshist>
+table in the configured database. CellCC does not touch that table besides
+copying completed jobs to it, but that table can be useful for other tooling
+examining statistics on completed jobs.
+
+If set to 0, completed jobs are not recorded anywhere (besides being logged on
+the CellCC check-server), and are just deleted when finished.
+
+By default, this is set to 1.
+
+=back
+
+=head1 PRIVILEGE REQUIRED
+
+The issuer of this command must be able to read the non-admin CellCC
+configuration, typically in B</etc/cellcc/cellcc.json>.
+
+=head1 COPYRIGHT
+
+Copyright (c) 2015, Sine Nomine Associates.
+
+See the provided LICENSE file for licensing terms.

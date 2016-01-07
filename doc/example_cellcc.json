@@ -1,0 +1,63 @@
+# This is an example config file for CellCC
+{
+
+## You must fill in at least these config directives, so we can access the
+## database. The DSN is a DBI "data source name", and the example given below
+## should be pretty self-explanatory for a mysql database.
+#
+#  db {
+#    ro: {
+#      dsn: "DBI:mysql:database=cellcc;host=db.example.com;port=3306",
+#      user: "cellcc_user",
+#      pass: "ro_cellcc_password",
+#    },
+
+## For read-write access to the database, we have a separate set of
+## credentials. Since this can modify CellCC metadata, it is recommended to put
+## this in a separate config file with more restrictive permissions. CellCC
+## will automatically try to load a separate cellcc_admin.json file for
+## operations that require administrative access.
+#    rw: {
+#      dsn: "DBI:mysql:database=cellcc;host=db.example.com;port=3306",
+#      user: "cellcc_user",
+#      pass: "rw_cellcc_password",
+#    },
+#  },
+
+## Here you can specify what cell to use as a 'master'/'source' cell, and which
+## cells it should sync to.
+#
+#  cells: {
+#    "master.example.com": {
+#      "dst-cells": ["na.example.com", "eu.example.com", "ap.example.com"],
+#    },
+#  },
+
+## Here you can set the default log level. Choices are debug, info, warn, and
+## error.
+#
+#  log: {
+#    level: "info",
+#  },
+
+## Here you can specify the krb5 principal used for remctl communication
+## between machines. We need a keytab to authenticate ourselves to the remctld
+## processes on other machines; of course, restrict access to this file.
+#
+#  remctl: {
+#    princ: "cellcc@EXAMPLE.COM",
+#    "client-keytab": "/etc/cellcc/remctl-client.keytab",
+#  },
+
+## Here you can specify the means by which we authenticate to AFS for vos
+## commands. If you just want to use -localauth operations, set localauth to 1.
+## Otherwise, set the keytab directive, and we'll authenticate using that
+## keytab. The 'princ' directive is optional; if absent, we'll just use the
+## first principal in the given keytab. Of course, if we are using localauth,
+## then we do not use a keytab.
+#  vos: {
+#    princ: null,
+#    keytab: "/etc/cellcc/vos-admin.keytab",
+#    localauth: 0,
+#  },
+}

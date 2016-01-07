@@ -1,0 +1,333 @@
+
+This file serves as a kind of "quick start" to setting up a CellCC environment;
+it does not document all of the functionality in CellCC.
+
+Requirements
+============
+
+CellCC requires a few pieces of software to run:
+
+ - perl (only tested with v5.16+, but may work with v5.8+)
+ - OpenAFS, or something that provides an OpenAFS-like 'vos' command
+ - AFS::Command
+ - k5start
+ - remctl
+ - Various perl modules automatically detected by packaging
+
+CellCC also requires a few things in your environment to do anything useful:
+
+ - At least two OpenAFS cells
+ - A working krb5 realm, with the ability to extract keytabs
+ - A MySQL database
+
+Only MySQL is supported as a database currently. CellCC uses DBI for database
+access and uses pretty mundane queries, so it should be feasible to use other
+SQL databases. However, the schema definitions included with CellCC are
+currently MySQL-specific.
+
+Installation
+============
+
+It is highly recommended to install CellCC using some sort of packaging
+wherever possible (RPM, deb, etc). However, if you want to manually install,
+run the following, as if you were installing a perl module from CPAN:
+
+  $ perl Makefile.PL
+  $ make
+  $ make install
+
+By default, this will install into /usr/local. The variables you can set to
+change various paths can be specified like so:
+
+  $ perl Makefile.PL SYSCONFDIR=/etc LOCALSTATEDIR=/var/lib \
+                     PREFIX=/usr BINDIR=/usr/bin
+
+Using 'make install' in this way will only install the CellCC perl libraries
+and commands, though. There are some additional documentation files in the
+'doc' dir, as well as some configuration to be provided in 'etc'. Ideally, you
+should install the RPM or other packaging to get all of the stuff you need.
+
+RPM
+===
+
+In the 'packaging' dir, there is some crude scripting to help generate RPMs.
+You should be able to just run the following to create an RPM for
+RHEL7/CentOS7:
+
+  $ ./packaging/rules rpm7
+
+See './packaging/rules help' for other targets.
+
+Note that the RPM packaging does not explicitly require everything we need. It
+is missing dependencies for the following:
+
+ - OpenAFS itself (or anything that offers an OpenAFS-like 'vos' command)
+ - The AFS::Command perl library
+
+This just makes it easier to install CellCC without having proper packaging for
+those; since some environments have those installed outside of RPM.
+
+If CellCC is ever added to a real RPM distribution (such as CentOS, EPEL, etc),
+this RPM packaging stuff should probably go away, in deference to the packaging
+work in downstream projects.
+
+DB Setup
+========
+
+Of course, there is much more to using CellCC than just installing the RPM.
+This is a distributed system, like AFS, and so there is more setup that must be
+done.
+
+First, you need database infrastructure before you can do much of anything.
+Currently, CellCC only supports MySQL, and we provide the schema in the 'sql/'
+directory. Just create a database for use with CellCC, and run that SQL to
+create the relevant tables.
+
+You also need some user credentials to access the database from CellCC tools.
+If you want some people to be able to run certain "read-only" commands (like
+querying status), and only allowing administrators or daemons to access
+"read-write" commands (which can edit database info), then you will need two
+database users: one with read-only access, and one with read-write access.
+
+However, this is not required; you can run CellCC using a single "read-write"
+database user, if you wish.
+
+krb5 Setup
+==========
+
+You are also going to need a few krb5 "users", keytabs, and possibly AFS users,
+for the daemons to authenticate as. These will be needed for the following:
+
+ - vos. We will need to run certain OpenAFS 'vos' commands with administrative
+   access, in order to dump and restore volumes. You can configure CellCC to
+   use -localauth, or we can run with krb5 credentials and authenticate to AFS
+   that way. For the latter, you will need to extract a keytab for such a user.
+
+   You will need to do this for each relevant cell (either source or
+   destination cells). But if each cell is capable of using the same keytab, or
+   if you just want to use -localauth, then you only need to do this once.
+
+ - remctl. Some pieces of CellCC will communicate with each other over the wire
+   using a kerberized communication system called remctl. We will need a user
+   to authenticate as for this. This can simply be something like
+   'remctl@REALM'. You will need to create a krb5 principal for this purpose,
+   as well as extract a keytab for that principal.
+
+ - host keytabs. All hosts that dump volume blobs from OpenAFS in the "source"
+   cell will need to run the remctl daemon. And so, in order to work properly,
+   the remctl daemon needs a service principal to use to authenticate incoming
+   connections. It is easiest if you have principals like
+   host/server.example.com, but it possible to configure CellCC to use
+   different service principal names.
+
+Basic CellCC config
+===================
+
+With the included RPM packaging, the default config file for CellCC is
+/etc/cellcc/cellcc.json, which is in JSON format. Commands that require
+administrative access will also try to load /etc/cellcc/cellcc_admin.json,
+which you can restrict access to and then use to store "admin" credentials.
+
+At the very least, you will want to configure the following directives in
+cellcc.json to get started:
+
+  {
+    db: {
+      ro: {
+        dsn: "DBI:mysql:database=cellcc;host=db.example.com",
+        user: "readonly_username",
+        pass: "readonly_password",
+      },
+    },
+
+    cells: {
+        // sync volumes from source.example.com to na.example.com and
+        // eu.example.com
+        "source.example.com": {
+          "dst-cells": ["na.example.com", "eu.example.com",],
+        },
+    },
+
+    remctl: {
+      princ: "cellcc@EXAMPLE.COM",
+      "client-keytab": "/etc/cellcc/remctl-client.keytab",
+    },
+
+    vos: {
+      keytab: "/etc/cellcc/vos.keytab",
+      princ: "vosadmin@EXAMPLE.COM", // optional
+
+      // or, specify:
+      // localauth: 1,
+    },
+
+    "pick-sites": {
+      // This command is run when cellcc needs to create a new volume in a
+      // destination cell. The command tells CellCC on what fileservers to
+      // create the new volume.
+      command: "/usr/local/bin/cellcc_picksites",
+    },
+  }
+
+For read-write access to the database, you may want to fill in the following
+values in cellcc_admin.json, and restrict access to that file:
+
+  {
+    db: {
+      rw: {
+        // dsn here is optional
+        user: "readwrite_username",
+        pass: "readonly_password",
+      },
+    },
+  }
+
+Hopefully the purpose of all of these values is fairly intuitive. The example
+values given set up a CellCC environment where volumes from the cell
+source.example.com are synced to the cells na.example.com and eu.example.com.
+The database connection information is specified like a normal perl DBI DSN. We
+use a principal of cellcc@EXAMPLE.COM for the remctl communication, and
+vosadmin@EXAMPLE.COM for vos administrative access.
+
+You will want all dumping/restoring machines to have access to that
+configuration file. It can either be installed into AFS or some other network
+file store, or you can just install the file on each machine.
+
+CellCC daemons
+==============
+
+With a basic setup in place, you should be able to start up the relevant CellCC
+daemons. We do not provide any init scripts or systemd unit files or anything
+like that for these daemons, but they can be run easily from the OpenAFS
+bosserver.
+
+All CellCC daemons (and almost all CellCC commands in general) are run from a
+single command: cellcc. The various daemons and other functionality are just
+provided as subcommands from the main 'cellcc' script.
+
+There is only one daemon that is central to the entire CellCC environment. This
+is called the "check-server", and is run like so:
+
+  $ cellcc check-server
+
+This daemon will monitor the progress of synchronizing volumes via the SQL
+database, and will retry sync jobs if they fail, and will notify administrators
+of errors (you must configure this, of course; this was not covered in the
+simple config above).
+
+The next daemon that is required is the daemon that will dump volumes from the
+"source" cell. This is called the "dump-server" and is run like so:
+
+  $ cellcc dump-server fs1.source.example.com source.example.com na.example.com
+
+In that example, that dump-server process will dump volumes going from cell
+'source.example.com' to 'na.example.com', and it will dump the relevant volume
+using an RO site on fileserver 'fs1.source.example.com'. It is intended that
+this dump-server process be run on fs1.source.example.com in this example, but
+that's not strictly necessary.
+
+You must run one 'dump-server' instance for every cell you wish to synchronize
+to (and every cell you wish to synchronize from, if there is more than one). So
+if you want to sync volumes using 'fs1' for cell 'na', 'fs2' for 'eu, and 'fs1'
+again for 'ap', then you would need to run three dump-server daemons:
+
+On 'fs1':
+
+  $ cellcc dump-server fs1.source.example.com source.example.com na.example.com ap.example.com
+
+On 'fs2':
+
+  $ cellcc dump-server fs2.source.example.com source.example.com eu.example.com
+
+If you want to change which fileserver you dump volumes to, then you should
+shutdown the dump-server process on that machine, and then start up another
+dump-server instance on the new machine.
+
+The final daemon that you need to run is the daemon that will grab volume dumps
+from the dump-server, and will restore them to the destination cell and release
+them. This is called the "restore-server" and is run like so:
+
+  $ cellcc restore-server na.example.com
+
+In this example, that restore-server instance will process dumps intended for
+the cell na.example.com (wherever they may come from). This can be run on any
+cell in (or at least physically close to) the na.example.com cell.
+
+remctl daemon
+=============
+
+On all machines that run a 'dump-server' instance, you also need to have a
+remctl daemon running, since this is how the restore-server instances grab the
+dumps dumped by the dump-server.
+
+On some systems (Debian systems, and some RHEL RPMs of remctl), the remctl
+packaging will set up the remctl server out of the box. The cellcc RPM
+packaging provides a remctld config snippet in /etc/remctl/conf.d/cellcc, but
+you will need to edit that file according to the included comments.
+
+For other systems, you need to make sure remctld is running from inetd (or
+standalone, if you wish, but it's easier to do via some form of inetd), and you
+need to make sure remctld is using the config snippets in /etc/remctl/conf.d/.
+
+Configuration snippets for (x)inetd and remctld are provided in the 'doc' dir,
+but of course you may need to tweak those examples to work at your site.
+
+To test if remctl communication is working between a restore-server and a
+dump-server, you can run the following command from the restore-server:
+
+  $ ccc-debug ping-remctl <dumpserver>
+
+That will both print out the remctl command that it will run, as well as
+actually run the command. If communication is working fine, you will see a
+message indicating success.
+
+Starting a sync
+===============
+
+Syncing volumes from a 'source' cell to 'destination' cells happens when you
+tell CellCC to do a sync; CellCC does not monitor volumes for changes or
+anything like that. In this way, it is similar to 'vos release'; so you must
+run a command to tell CellCC to start syncing volume changes.
+
+To start such a sync, run the command:
+
+  $ cellcc start-sync source.example.com vol.example
+
+That will start syncing the volume 'vol.example' from cell source.example.com
+to all configured destination cells in the cellcc configuration. The volume
+will be synced in the "default" queue, which defaults to a restore parallelism
+of 1. A different queue can be specified using the --queue option, but the
+example config above doesn't define any non-default queues (the 'default' queue
+always exists).
+
+We assume that the volume has already been released in the 'source.example.com'
+cell before this command is run; CellCC does not do any volume release in the
+source cell.
+
+Also note that the 'start-sync' command returns as soon as the sync is
+scheduled; it does not wait for the sync to complete. It does, however, print
+a "job id" on stdout, which you can use to track the progress of the sync job.
+
+Viewing sync status
+===================
+
+You can use the "cellcc jobs" command to view the status of all running jobs.
+This is printed in human-readable plain text by default, but can also be
+printed in JSON with '--format json'.
+
+Errors in syncing the volume are reported as "alerts", which are sent by
+running configured commands. Look at the manpage for cellcc_config and
+cellcc_check-server for details, specifically the directives
+"check/alert-cmd/txt", "check/alert-cmd/json", and "check/alert-log".
+
+Documentation
+=============
+
+All cellcc subcommands have associated manpages, and the included RPM packaging
+installs all of our manpages to the appropriate place. So after installation,
+the manpage for e.g. 'cellcc config' can be seen by running 'man
+cellcc_config'.
+
+To see the documentation without installing, the POD source for the manpages
+can be seen in the doc/pod1/ dir. You can usually even view these like manpages
+by running 'perldoc doc/pod1/cellcc_config.pod'.

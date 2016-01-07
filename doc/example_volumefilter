@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# This is an example "volume-filter" command for use with CellCC. See the
+# documentation for cellcc_config(1) for more details, specifically the
+# directive "volume-filter/command".
+
+# Information about the to-be-synced volume is in these $CELLCC_FILTER*
+# environment variables.
+#
+# Blank lines and lines beginning with a # are ignored. The only other output
+# must be a single line printing "include" or "exclude"
+# a "server partition" pair.
+echo "# This script is for use by CellCC; it is not intended to be run manually"
+echo "# Called for volume '$CELLCC_FILTER_VOLUME' cell '$CELLCC_FILTER_SRC_CELL'"
+echo "# qname '$CELLCC_FILTER_QNAME'"
+echo
+echo "include"
+# echo "exclude"

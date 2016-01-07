@@ -1,0 +1,46 @@
+=head1 NAME
+
+cellcc_jobs - View CellCC jobs status
+
+=head1 SYNOPSIS
+
+B<cellcc jobs> [B<--format> <I<format>>] [B<--errors>]
+
+=head1 DESCRIPTION
+
+The B<cellcc jobs> command allows the caller to see the status on call sync
+jobs that are currently running in the CellCC system.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--format> <I<format>>
+
+This dictates the format that information about jobs will be printed in. By
+default, the format is "txt", which prints out the information in a
+human-readable form.
+
+The only other format currently available is "json", which outputs the job data
+in JSON format, which can be easily parsed and used by other tools. The JSON
+output format also includes all details about a job that CellCC knows; the text
+output format omits some data.
+
+=item B<--errors>
+
+If this flag is specified, B<cellcc jobs> will only show information about jobs
+that are in the ERROR state. By default B<cellcc jobs> will show all running
+jobs.
+
+=back
+
+=head1 PRIVILEGE REQUIRED
+
+The issuer of this command must be able to read the non-admin CellCC
+configuration, typically in B</etc/cellcc/cellcc.json>.
+
+=head1 COPYRIGHT
+
+Copyright (c) 2015, Sine Nomine Associates.
+
+See the provided LICENSE file for licensing terms.

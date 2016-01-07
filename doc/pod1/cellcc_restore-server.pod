@@ -1,0 +1,56 @@
+=head1 NAME
+
+cellcc_restore-server - Run the CellCC restore-server
+
+=head1 SYNOPSIS
+
+B<cellcc restore-server> [B<--once>] <I<dst_cell>>
+
+=head1 DESCRIPTION
+
+B<cellcc restore-server> runs the CellCC "restore-server", which handles
+transferring volume dumps from a dump-server to a restore-server, restoring
+volume blobs to AFS, and releasing volumes.
+
+Running B<cellcc restore-server> will handle trasferring, restoring, and
+releasing volumes for all jobs syncing to I<dst_cell> cells, from any source
+cell. The volume will be restored to the existing RW site for the volume in the
+destination cell, if it already exists. If the volume does not already exist,
+the volume is created using locations obtained from running
+B<pick-sites/command> (see L<cellcc_config(1)>).
+
+Sync jobs that are processed by B<cellcc restore-server> are limited in
+parallelism according to what queue the sync job is in. See
+L<cellcc_start-sync(1)> for a brief explanation of queues.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--once>
+
+By default, B<cellcc restore-server> will run as a daemon, periodically waking
+up to see if there are new sync jobs that need transferring, restoring, or
+releasing. If the B<--once> flag is passed, instead B<cellcc restore-server>
+will just check once if there are any relevant sync jobs. If there are,
+B<cellcc restore-server> will perform the relevant operations like normal, and
+then will wait for all operations to finish, and then will exit.
+
+This option can be useful for debugging, or if you want to schedule the
+scanning of sync jobs yourself, instead of letting B<cellcc restore-server>
+handle sleeping and waking on its own.
+
+=back
+
+=head1 PRIVILEGE REQUIRED
+
+The issuer of this command must be able to read the "admin" CellCC
+configuration, typically in B</etc/cellcc/cellcc_admin.json>, which allows
+write operations to the CellCC system. Typically this is only allowed for
+administrators or accounts dedicated to this "syncing" functionality.
+
+=head1 COPYRIGHT
+
+Copyright (c) 2015, Sine Nomine Associates.
+
+See the provided LICENSE file for licensing terms.

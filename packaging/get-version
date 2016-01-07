@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# Crudely parse the version number in Const.pm, and print it out
+
+cat lib/AFS/CellCC/Const.pm | \
+sed -n -e 's/^our [$]VERSION = "//p' |\
+sed -e 's/";$//' -e 's/[.]0*/./g' -e 's/[.][.]/.0./g' -e 's/[.]$/.0/g'

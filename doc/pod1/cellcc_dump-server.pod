@@ -1,0 +1,48 @@
+=head1 NAME
+
+cellcc_dump-server - Run the CellCC dump-server
+
+=head1 SYNOPSIS
+
+B<cellcc dump-server> [B<--once>] <I<server>> <I<src_cell>> <I<dst_cell>>+
+
+=head1 DESCRIPTION
+
+B<cellcc dump-server> runs the CellCC "dump-server", which handles dumping
+volumes from AFS to local disk.
+
+Running B<cellcc dump-server> will handle dumping volumes for all jobs syncing
+from I<src_cell> to any of the I<dst_cell> cells. The volume will be dumped
+from an RO site on the fileserver I<server>.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--once>
+
+By default, B<cellcc dump-server> will run as a daemon, periodically waking up
+to see if there are new sync jobs that needs a volume dumped. If the B<--once>
+flag is passed, instead B<cellcc dump-server> will just check once if there are
+any sync jobs that need a volume dumped. If there are, B<cellcc dump-server>
+will perform the dump like normal, and then will wait for all dumps to finish,
+and then will exit.
+
+This option can be useful for debugging, or if you want to schedule the
+scanning of sync jobs yourself, instead of letting B<cellcc dump-server> handle
+sleeping and waking on its own.
+
+=back
+
+=head1 PRIVILEGE REQUIRED
+
+The issuer of this command must be able to read the "admin" CellCC
+configuration, typically in B</etc/cellcc/cellcc_admin.json>, which allows
+write operations to the CellCC system. Typically this is only allowed for
+administrators or accounts dedicated to this "syncing" functionality.
+
+=head1 COPYRIGHT
+
+Copyright (c) 2015, Sine Nomine Associates.
+
+See the provided LICENSE file for licensing terms.

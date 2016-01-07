@@ -1,0 +1,121 @@
+=head1 NAME
+
+cellcc - Command suite for the CellCC framework
+
+=head1 SYNOPSIS
+
+B<cellcc> <I<command>> <I<arguments>>
+
+=head1 DESCRIPTION
+
+B<cellcc> is the frontend command suite for the CellCarbonCopy framework for
+syncing multiple AFS cells. This page just provides general documentation
+common to all B<cellcc> commands. For documentation on individual commands, see
+L<COMMANDS> below.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--config=>I<config_file>
+
+Specify an alternate configuration file to use.
+
+=item B<-x> I<name>=I<value>
+
+Specify an extra configuration option to use during the execution of the given
+command. This will override the configuration in any configuration files. See
+L<cellcc_config(1)> for more information about configuration directives.
+
+If I<name> begins with the string C<json:>, then the value given is parsed as
+JSON. Normally, the value is not parsed and is just accepted as a literal
+string. Using this C<json:> prefix is needed to set configuration directives
+that must be arrays or JSON objects (hashes, dictionaries, etc).
+
+For example, the following temporarily sets the config directive db/ro/user to
+C<testuser>, just for the duration of running the given command:
+
+   $ cellcc -x db/ro/user=testuser
+
+To set a more complex config directive, you must use the C<json:> prefix. For
+example, to temporarily set the directive cells/afs1.example.com/dst-cells to
+['afs2.example.com', 'afs3.example.com'], you could run the following:
+
+   $ cellcc -x 'json:dst/afs1.example.com/dst-cells=["afs2.example.com", "afs3.example.com"]'
+
+Note the extra quoting required when running this command from the shell, so
+the shell passes on the quotes to cellcc.
+
+=item B<--version>
+
+Causes B<cellcc> to print its version, and then exit successfully. Nothing else
+is done.
+
+=item B<--help>
+
+Prints usage information for the specified command, or a general usage message
+if no command was given.
+
+=back
+
+=head1 COMMANDS
+
+=over 4
+
+=item L<cellcc_config(1)>
+
+Query information about the local configuration.
+
+=item L<cellcc_start-sync(1)>
+
+Start syncing a volume from one cell to another cell.
+
+=item L<cellcc_jobs(1)>
+
+View a listing of active jobs to sync volumes.
+
+=item cellcc_vars
+
+This can be used to view various compile-time variables used when building
+CellCC.
+
+=item L<cellcc_config(1)>
+
+View or check information about the local CellCC configuration.
+
+=item L<cellcc_retry-job(1)>
+
+Schedule a job to be retried after it has failed too many times.
+
+=item L<cellcc_dump-server(1)>
+
+Run the dump-server, a server process for dumping volume data.
+
+=item L<cellcc_restore-server(1)>
+
+Run the restore-server, a server process for restoring and releasing volumes.
+
+=item L<cellcc_check-server(1)>
+
+Run the check-server, a server for reporting on job errors, and retrying
+transiently-failed syncing jobs.
+
+=item cellcc_remctl
+
+This is command used internally by CellCC. Do not run it directly.
+
+=item cellcc_help
+
+Running this command is identical to just specifying the B<--help> option.
+
+=item cellcc_version
+
+Running this command is identical to just specifying the B<--version> option.
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright (c) 2015, Sine Nomine Associates.
+
+See the provided LICENSE file for licensing terms.

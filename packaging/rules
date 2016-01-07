@@ -1,0 +1,36 @@
+#!/usr/bin/make -f
+
+VERSION=`./packaging/get-version`
+RPMBUILD=rpmbuild --define "_topdir `pwd`/packaging" --define "cccver $(VERSION)"
+
+help:
+	@echo "Targets:"
+	@echo "    tgz:   Build a cellcc-v*.tar.gz source tarball"
+	@echo "    srpm7: Build an srpm for EL7"
+	@echo "    rpm7:  Build an rpm for EL7"
+
+clean:
+	rm -f cellcc-*.tar.gz packaging/SRPMS/*.src.rpm packaging/RPMS/*/*.rpm packging/BUILD/*
+
+tgz:
+	tmpfile=`mktemp --tmpdir cellcc-tgz.XXXXXX` ; \
+	tar --exclude='.git*' \
+	    --exclude='*.tar.gz' \
+	    --exclude='*.rpm' \
+	    --exclude='*.swp' \
+	    --transform "s,^[.],cellcc-$(VERSION)," \
+	    -czf "$$tmpfile" . ; \
+	mkdir -p packaging/SOURCES ; \
+	mv "$$tmpfile" packaging/SOURCES/cellcc-v$(VERSION).tar.gz
+	@echo
+	@echo Tarball is in packaging/SOURCES/cellcc-v$(VERSION).tar.gz
+
+
+srpm7: tgz
+	$(RPMBUILD) -bs packaging/cellcc-el7.spec
+
+rpm7: srpm7
+	$(RPMBUILD) --rebuild packaging/SRPMS/cellcc-$(VERSION)-1.*.src.rpm
+	@echo
+	@echo RPM should be in packaging/RPMS/noarch/cellcc-$(VERSION)-1.*.rpm
+	@echo

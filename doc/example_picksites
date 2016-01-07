@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# This is an example "picksites" command for use with CellCC. See the
+# documentation for cellcc_config(1) for more details, specifically the
+# directive "pick-sites/command".
+
+# Information about the to-be-created volume is in these $CELLCC_PS_*
+# environment variables.
+if [ x"$CELLCC_PS_VOLUME" = x ] ; then
+    echo "volume not specified" >&2
+    exit 1
+fi
+if [ x"$CELLCC_PS_DST_CELL" = x ] ; then
+    echo "cell not specified" >&2
+    exit 1
+fi
+
+# Blank lines and lines beginning with a # are ignored. Everything else must be
+# a "server partition" pair.
+echo "# This script is for use by CellCC; it is not intended to be run manually"
+echo "# Called for volume '$CELLCC_PS_VOLUME' cell '$CELLCC_PS_DST_CELL'"
+echo
+echo "rwserver.example.com vicepa"
+echo "roserver1.example.com vicepd"
+echo "roserver2.example.com vicepab"
