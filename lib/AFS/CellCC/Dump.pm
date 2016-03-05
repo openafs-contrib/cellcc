@@ -282,7 +282,7 @@ _do_dump($$$) {
     update_job(jobid => $job->{jobid},
                dvref => \$job->{dv},
                from_state => $state,
-               timeout => 120,
+               timeout => 1800,
                description => "Processing finished dump file");
 
     DEBUG "vos dump successful, processing dump file";

@@ -242,7 +242,7 @@ _do_xfer($$) {
     update_job(jobid => $job->{jobid},
                dvref => \$job->{dv},
                from_state => $work_state,
-               timeout => 120,
+               timeout => 1800,
                description => "Checking retrieved dump file");
 
     # See if the retrieved dump matches the checksum in the database
