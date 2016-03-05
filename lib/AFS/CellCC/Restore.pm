@@ -351,7 +351,7 @@ _create_volume($$) {
     update_job(jobid => $job->{jobid},
                dvref => \$job->{dv},
                from_state => $state,
-               timeout => 120,
+               timeout => 1200,
                description => "Volume created, checking volume");
 }
 
