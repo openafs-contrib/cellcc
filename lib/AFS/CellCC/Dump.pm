@@ -19,7 +19,6 @@ use warnings;
 
 use 5.008_000;
 
-use Digest;
 use File::Basename;
 use File::stat;
 use File::Temp;
@@ -31,7 +30,8 @@ use AFS::CellCC;
 use AFS::CellCC::Config qw(config_get);
 use AFS::CellCC::DB qw(db_rw find_update_jobs update_job job_error);
 use AFS::CellCC::VOS qw(vos_auth find_volume volume_exists volume_times);
-use AFS::CellCC::Util qw(spawn_child monitor_child describe_file pretty_bytes scratch_ok);
+use AFS::CellCC::Util qw(spawn_child monitor_child describe_file pretty_bytes scratch_ok
+                         calc_checksum);
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -53,8 +53,7 @@ _dump_success($$$$) {
     # Note that this checksum doesn't need to by cryptographically secure. md5
     # should be fine.
     my $algo = config_get('dump/checksum');
-    my $raw_checksum = Digest->new($algo)->addfile($dump_fh)->hexdigest;
-    my $checksum = "$algo:$raw_checksum";
+    my $checksum = calc_checksum($dump_fh, $filesize, $algo, $jobid, $dvref, $prev_state);
 
     update_job(jobid => $jobid,
                dvref => $dvref,
@@ -282,7 +281,7 @@ _do_dump($$$) {
     update_job(jobid => $job->{jobid},
                dvref => \$job->{dv},
                from_state => $state,
-               timeout => 1800,
+               timeout => 120,
                description => "Processing finished dump file");
 
     DEBUG "vos dump successful, processing dump file";

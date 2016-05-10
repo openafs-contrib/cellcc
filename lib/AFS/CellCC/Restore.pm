@@ -32,7 +32,8 @@ use AFS::CellCC::Const qw($VERSION_STRING);
 use AFS::CellCC::Remoteclient qw(remctl_cmd);
 use AFS::CellCC::VOS qw(vos_auth find_volume volume_exists check_volume_sites
                         volume_all_sites);
-use AFS::CellCC::Util qw(spawn_child monitor_child describe_file pretty_bytes scratch_ok);
+use AFS::CellCC::Util qw(spawn_child monitor_child describe_file pretty_bytes scratch_ok
+                         calc_checksum);
 use AFS::CellCC::DB qw(db_rw
                        update_job
                        find_update_jobs
@@ -92,13 +93,14 @@ _fetch_dump($$$$) {
 # Check if the checksum for the dump blob in $path matches the checksum
 # recorded in job $job.
 sub
-_checksum_valid($$) {
-    my ($job, $path) = @_;
+_checksum_valid($$$) {
+    my ($job, $path, $state) = @_;
     my $fh;
-    my $digest;
+
+    my $jobid = $job->{jobid};
+    my $dvref = \$job->{dv};
 
     my ($algo, undef) = split(/:/, $job->{dump_checksum});
-    $digest = Digest->new($algo);
 
     if (!open($fh, '<', $path)) {
         WARN "Cannot open dump file $path: $!\n";
@@ -113,10 +115,8 @@ _checksum_valid($$) {
 
     DEBUG "filesize valid (path $path): ".$sb->size;
 
-    my $raw_checksum = $digest->addfile($fh)->hexdigest;
+    my $checksum = calc_checksum($fh, $sb->size, $algo, $jobid, $dvref, $state);
     close($fh);
-
-    my $checksum = "$algo:$raw_checksum";
 
     if ($checksum ne $job->{dump_checksum}) {
         WARN "Dump file ($path) checksum mismatch: $checksum != ".$job->{dump_checksum}."\n";
@@ -242,12 +242,12 @@ _do_xfer($$) {
     update_job(jobid => $job->{jobid},
                dvref => \$job->{dv},
                from_state => $work_state,
-               timeout => 1800,
+               timeout => 120,
                description => "Checking retrieved dump file");
 
     # See if the retrieved dump matches the checksum in the database
     my $dump_path = File::Spec->catfile(config_get('restore/scratch-dir'), $job->{restore_filename});
-    if (!_checksum_valid($job, $dump_path)) {
+    if (!_checksum_valid($job, $dump_path, $work_state)) {
         unlink($dump_path);
         update_job(jobid => $job->{jobid},
                    dvref => \$job->{dv},
