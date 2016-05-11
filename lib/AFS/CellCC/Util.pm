@@ -344,7 +344,7 @@ calc_checksum($$$$$$) {
     my ($dumpfh, $filesize, $algo, $jobid, $dvref, $state) = @_;
 
     if ($filesize < 0) {
-        die("The size of the file cannot be negative\n");
+        die("The size of the file ($filesize) cannot be negative\n");
     }
 
     my $start = time();
