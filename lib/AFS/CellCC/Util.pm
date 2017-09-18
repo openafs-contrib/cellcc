@@ -334,7 +334,7 @@ scratch_ok($$$$$) {
     $scratch_min .= " (".pretty_bytes($scratch_min).")";
 
     DEBUG "job $job->{jobid} size $size leaves scratch dir $scratch_dir with ".
-          "$bytes_left free space, which is less than the configured minimum of ".
+          "$bytes_left free space, which is more than the configured minimum of ".
           "$scratch_min";
 
     return 1;
