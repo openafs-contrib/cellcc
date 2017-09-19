@@ -130,6 +130,16 @@ spawn_child(%) {
     return $pid;
 }
 
+# We can get interrupted by a SIGCHLD while sleeping
+sub
+_interruptible_sleep($) {
+    my ($sec) = @_;
+
+    local $SIG{CHLD} = sub {};
+
+    sleep($sec);
+}
+
 # Monitor a spawned child process. Takes a pid and some options in a hashref.
 # Available options:
 #  - name: A human-readable name for what we're waiting for; used in log messages
@@ -167,9 +177,6 @@ monitor_child($$) {
 
     my $last_cb = time();
 
-    # So we get interrupted by a SIGCHLD while sleeping
-    local $SIG{CHLD} = sub {};
-
     eval { while (1) {
         my $res = waitpid($pid, WNOHANG);
         if ($res < 0) {
@@ -200,7 +207,7 @@ monitor_child($$) {
             }
         }
 
-        sleep(1);
+        _interruptible_sleep(1);
     }};
     if ($@) {
         my $error = $@;
@@ -327,7 +334,7 @@ scratch_ok($$$$$) {
     $scratch_min .= " (".pretty_bytes($scratch_min).")";
 
     DEBUG "job $job->{jobid} size $size leaves scratch dir $scratch_dir with ".
-          "$bytes_left free space, which is less than the configured minimum of ".
+          "$bytes_left free space, which is more than the configured minimum of ".
           "$scratch_min";
 
     return 1;
