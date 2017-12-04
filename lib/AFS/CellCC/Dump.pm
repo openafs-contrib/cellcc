@@ -41,41 +41,87 @@ our @EXPORT_OK = qw(process_dumps);
 # currently just calculate a checksum for the dump blob, and update the
 # database to give the dump filename and metadata.
 sub
-_dump_success($$$$) {
-    my ($jobid, $dvref, $prev_state, $dump_fh) = @_;
+_dump_success($$$) {
+    my ($jobsref, $prev_state, $dump_fh) = @_;
+    my @jobs = @$jobsref;
     my $done_state = 'DUMP_DONE';
     my $filesize = stat($dump_fh)->size;
 
-    my $base_file = basename($dump_fh->filename);
+    my @link_fhs;
+    my $dump_dir = dirname($dump_fh->filename);
 
     seek($dump_fh, 0, 0);
 
     # Note that this checksum doesn't need to by cryptographically secure. md5
     # should be fine.
     my $algo = config_get('dump/checksum');
-    my $checksum = calc_checksum($dump_fh, $filesize, $algo, $jobid, $dvref, $prev_state);
+    my $checksum = calc_checksum($jobsref, $dump_fh, $filesize, $algo, $prev_state);
 
-    update_job(jobid => $jobid,
-               dvref => $dvref,
-               from_state => $prev_state,
-               to_state => $done_state,
-               dump_fqdn => config_get('fqdn'),
-               dump_method => 'remctl',
-               dump_port => config_get('remctl/port'),
-               dump_filename => $base_file,
-               dump_checksum => $checksum,
-               dump_filesize => $filesize,
-               timeout => undef,
-               description => "Waiting to xfer dump file");
+    # Hardlink $dump_fh to another shallow "copy" for each job.
+    # We could reuse $dump_fh here for one of the jobs, instead of making a
+    # hard link for each job. But do the hardlink for everyone, to keep the
+    # behavior more consistent for all jobs.
+    for my $job (@jobs) {
+        my $fh = File::Temp->new(DIR => $dump_dir,
+                                 TEMPLATE => "cccdlink_job$job->{jobid}_XXXXXX",
+                                 SUFFIX => '.dump');
 
-    # Keep the dump file around; we've reported to the db that we have it.
+        # Note that we are unlinking the underlying temp file out from under
+        # File::Temp. This means that the filehandle for each $fh does not
+        # point to the same file as $fh->filename. This is okay for us, since
+        # we don't actually write to $fh (we're just hard-linking to the
+        # filename), but it's a little strange compared to what File::Temp
+        # normally expects. This doesn't seem to cause any problems for our usage (File::Temp
+        # will unlink the file anyway), but note that directly calling methods
+        # like $fh->unlink0 or $fh->unlink1 probably will not work.
+        unlink($fh->filename)
+            or die("Cannot remove tmp link file: $!\n");
+
+        link($dump_fh->filename, $fh->filename)
+            or die("Cannot create dump hardlink: $!\n");
+
+        push(@link_fhs, $fh);
+    }
+
+    # Get rid of the dump_fh file; we don't need it anymore, since we just use
+    # the link files from now on.
+    unlink($dump_fh->filename)
+        or die("Cannot remove dump file: $!\n");
     $dump_fh->unlink_on_destroy(0);
+    close($dump_fh);
+
+    db_rw(sub($) {
+        my ($dbh) = @_;
+        for my $i (0 .. $#jobs) {
+            my $base_file = basename($link_fhs[$i]->filename);
+            my $job = $jobs[$i];
+
+            update_job(dbh => $dbh,
+                       jobid => $job->{jobid},
+                       dvref => \$job->{dv},
+                       from_state => $prev_state,
+                       to_state => $done_state,
+                       dump_fqdn => config_get('fqdn'),
+                       dump_method => 'remctl',
+                       dump_port => config_get('remctl/port'),
+                       dump_filename => $base_file,
+                       dump_checksum => $checksum,
+                       dump_filesize => $filesize,
+                       timeout => undef,
+                       description => "Waiting to xfer dump file");
+        }
+    });
+
+    # Keep the dump files around; we've reported to the db that we have them.
+    for my $fh (@link_fhs) {
+        $fh->unlink_on_destroy(0);
+    }
 }
 
 # Get the estimated dump size for the given volume.
 sub
-_get_size($$$$$) {
-    my ($job, $volname, $server, $partition, $lastupdate) = @_;
+_get_size($$$$) {
+    my ($volname, $server, $partition, $lastupdate) = @_;
 
     my $vos = vos_auth();
     my $result = $vos->size(id => $volname, dump => 1, time => $lastupdate)
@@ -166,33 +212,56 @@ _calc_incremental($$) {
     return $remote_times->{update} - 3;
 }
 
-# Dump the volume associated with the given job. We calculate some info about
-# the volume, dump it to disk, and report the result to the database.
+# Dump the volume associated with the given jobs. We calculate some info about
+# the volume, dump it to disk, and report the result to the database. All of
+# the jobs in $jobsref must be for the same volume, and that volume must be
+# identical in the destination cells (specifically, so we can use the same
+# incremental dump for all jobs in the array).
 sub
 _do_dump($$$) {
-    my ($server, $job, $prev_state) = @_;
+    my ($server, $jobsref, $prev_state) = @_;
+    my @jobs = @$jobsref;
     my $state = 'DUMP_WORK';
 
-    my $volname = $job->{volname}.".readonly";
+    # The job that we're considering to actually do the dump (the other jobs
+    # are effectively just waiting for this job to finish the dump)
+    my $dumpjob = $jobs[0];
 
-    update_job(jobid => $job->{jobid},
-               dvref => \$job->{dv},
-               from_state => $prev_state,
-               to_state => $state,
-               timeout => 300,
-               description => "Checking local volume state");
+    my $volname = $dumpjob->{volname}.".readonly";
 
-    my $lastupdate = _calc_incremental($job, $state);
+    my $jobids = join(',', map { $_->{jobid} } @jobs);
+    my $dst_cells = join(',', map { $_->{dst_cell} } @jobs);
+
+    db_rw(sub ($) {
+        my ($dbh) = @_;
+        for my $job (@jobs) {
+            update_job(dbh => $dbh,
+                       jobid => $job->{jobid},
+                       dvref => \$job->{dv},
+                       from_state => $prev_state,
+                       to_state => $state,
+                       timeout => 300,
+                       description => "Checking local volume state");
+        }
+    });
+
+    my $lastupdate = _calc_incremental($dumpjob, $state);
     if (!defined($lastupdate)) {
         # _calc_incremental said we can skip syncing the volume, so transition
         # the job straight to the final stage
         DEBUG "volume $volname appears to not need a sync";
-        update_job(jobid => $job->{jobid},
-                   dvref => \$job->{dv},
-                   from_state => $state,
-                   to_state => 'RELEASE_DONE',
-                   timeout => 0,
-                   description => "Remote volume appears to be up to date; skipping sync");
+        db_rw(sub ($) {
+            my ($dbh) = @_;
+            for my $job (@jobs) {
+                update_job(dbh => $dbh,
+                           jobid => $job->{jobid},
+                           dvref => \$job->{dv},
+                           from_state => $state,
+                           to_state => 'RELEASE_DONE',
+                           timeout => 0,
+                           description => "Remote volume appears to be up to date; skipping sync");
+            }
+        });
         return;
     }
 
@@ -202,31 +271,38 @@ _do_dump($$$) {
     ($server, $partition) = find_volume(name => $volname,
                                         type => 'RO',
                                         server => $server,
-                                        cell => $job->{src_cell});
+                                        cell => $dumpjob->{src_cell});
 
-    my $dump_size = _get_size($job, $volname, $server, $partition, $lastupdate);
+    my $dump_size = _get_size($volname, $server, $partition, $lastupdate);
     DEBUG "got dump size $dump_size for volname $volname";
 
-    if (!scratch_ok($job, $prev_state, $dump_size,
+    if (!scratch_ok($jobsref, $prev_state, $dump_size,
                     config_get('dump/scratch-dir'),
                     config_get('dump/scratch-minfree'))) {
         return;
     }
 
-    update_job(jobid => $job->{jobid},
-               dvref => \$job->{dv},
-               from_state => $state,
-               vol_lastupdate => $lastupdate,
-               timeout => 120,
-               description => "Starting to dump volume");
-    $job->{vol_lastupdate} = $lastupdate;
+    db_rw(sub ($) {
+        my ($dbh) = @_;
+        for my $job (@jobs) {
+            update_job(dbh => $dbh,
+                       jobid => $job->{jobid},
+                       dvref => \$job->{dv},
+                       from_state => $state,
+                       vol_lastupdate => $lastupdate,
+                       timeout => 120,
+                       description => "Starting to dump volume via job $dumpjob->{jobid}");
 
-    my $stderr_fh = File::Temp->new(TEMPLATE => "cccdump_job$job->{jobid}_XXXXXX",
+            $job->{vol_lastupdate} = $lastupdate;
+        }
+    });
+
+    my $stderr_fh = File::Temp->new(TEMPLATE => "cccdump_job$dumpjob->{jobid}_XXXXXX",
                                     TMPDIR => 1, SUFFIX => '.stderr');
 
     # Determine a filename where we can put our dump blob
     my $dump_fh = File::Temp->new(DIR => config_get('dump/scratch-dir'),
-                                  TEMPLATE => "cccdump_job$job->{jobid}_XXXXXX",
+                                  TEMPLATE => "cccdump_job$dumpjob->{jobid}_XXXXXX",
                                   SUFFIX => '.dump');
 
     # Start dumping the volume
@@ -238,8 +314,8 @@ _do_dump($$$) {
                    file => $dump_fh->filename,
                    server => $server,
                    partition => $partition,
-                   time => $job->{vol_lastupdate},
-                   cell => $job->{src_cell})
+                   time => $dumpjob->{vol_lastupdate},
+                   cell => $dumpjob->{src_cell})
         or die("vos dump error: ".$vos->errors());
     });
     eval {
@@ -258,12 +334,19 @@ _do_dump($$$) {
                                                              \$last_bytes,
                                                              \$last_time);
 
-            my $descr = "Running vos dump ($pretty_bytes / $pretty_total dumped, $pretty_rate)";
-            update_job(jobid => $job->{jobid},
-                       dvref => \$job->{dv},
-                       from_state => $state,
-                       timeout => $interval+60,
-                       description => $descr);
+            my $descr = "Running vos dump via job $dumpjob->{jobid} ($pretty_bytes / $pretty_total dumped, $pretty_rate)";
+
+            db_rw(sub ($) {
+                my ($dbh) = @_;
+                for my $job (@jobs) {
+                    update_job(dbh => $dbh,
+                               jobid => $job->{jobid},
+                               dvref => \$job->{dv},
+                               from_state => $state,
+                               timeout => $interval+60,
+                               description => $descr);
+                }
+            });
         }});
         $pid = undef;
     };
@@ -271,23 +354,29 @@ _do_dump($$$) {
         my $error = $@;
         # Kill our child dumping process, so it doesn't hang around
         if (defined($pid)) {
-            WARN "Encountered error while dumping for job $job->{jobid}; killing dumping pid $pid";
+            WARN "Encountered error while dumping for job(s) $jobids; killing dumping pid $pid";
             kill('INT', $pid);
             $pid = undef;
         }
         die($error);
     }
 
-    update_job(jobid => $job->{jobid},
-               dvref => \$job->{dv},
-               from_state => $state,
-               timeout => 120,
-               description => "Processing finished dump file");
+    db_rw(sub ($) {
+        my ($dbh) = @_;
+        for my $job (@jobs) {
+            update_job(dbh => $dbh,
+                       jobid => $job->{jobid},
+                       dvref => \$job->{dv},
+                       from_state => $state,
+                       timeout => 120,
+                       description => "Processing finished dump file");
+        }
+    });
 
     DEBUG "vos dump successful, processing dump file";
-    _dump_success($job->{jobid}, \$job->{dv}, $state, $dump_fh);
+    _dump_success($jobsref, $state, $dump_fh);
 
-    INFO "Finished performing dump for job $job->{jobid} (vol '$job->{volname}', $job->{src_cell} -> $job->{dst_cell})";
+    INFO "Finished performing dump for job(s) $jobids (vol '$dumpjob->{volname}', $dumpjob->{src_cell} -> ($dst_cells))";
 }
 
 # Find all jobs for the given src/dst cells that need dumps, and perform the
@@ -320,7 +409,7 @@ process_dumps($$$@) {
         # In child
         eval {
             eval {
-                _do_dump($server, $job, $start_state);
+                _do_dump($server, [$job], $start_state);
             };
             if ($@) {
                 my $error = $@;
