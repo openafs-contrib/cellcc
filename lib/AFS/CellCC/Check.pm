@@ -56,6 +56,7 @@ _retry_state($$) {
     my ($job, $old_state) = @_;
 
     my %table = (
+        EXAM_WORK => 'EXAM_START',
         DUMP_WORK => 'DUMP_START',
         XFER_WORK => 'XFER_START',
         RESTORE_WORK => 'RESTORE_START',
