@@ -298,22 +298,55 @@ create_job(%) {
 sub
 find_jobs(%) {
     my %info = _check_args({@_},
-        req => [qw(dbh
-                   dst_cell
+        req => [qw(dst_cell
                    state
         )],
-        opt => [qw(src_cell
+        opt => [qw(dbh
+                   src_cell
                    qname
                    jobid
         )],
     );
 
     my $dbh = $info{dbh};
+    if (!$dbh) {
+        my @ret;
+        db_ro(sub($) {
+            my ($sub_dbh) = @_;
+            @ret = find_jobs(%info, dbh => $sub_dbh);
+        });
+        return @ret;
+    }
 
-    my $sql = <<'END';
+    my @dst_cell_args;
+    my $dst_cell_q;
+
+    my @state_args;
+    my $state_q;
+
+    if (ref($info{dst_cell}) eq 'ARRAY') {
+        @dst_cell_args = @{$info{dst_cell}};
+        $dst_cell_q = join(',', map { '?' } @dst_cell_args);
+
+    } else {
+        @dst_cell_args = ($info{dst_cell},);
+        $dst_cell_q = '?';
+    }
+
+    if (ref($info{state}) eq 'ARRAY') {
+        @state_args = @{$info{state}};
+        $state_q = join(',', map { '?' } @state_args);
+
+    } else {
+        @state_args = ($info{state},);
+        $state_q = '?';
+    }
+
+    my $sql = <<"END";
     SELECT id AS jobid,
            src_cell,
            dst_cell,
+           state,
            dv,
            volname,
            vol_lastupdate,
@@ -330,26 +363,28 @@ find_jobs(%) {
          (? IS NULL OR id = ?)
          AND (? IS NULL OR qname = ?)
          AND (? IS NULL OR src_cell = ?)
-         AND dst_cell = ?
-         AND state = ?
+         AND dst_cell IN ($dst_cell_q)
+         AND state IN ($state_q)
     ORDER BY mtime ASC;
 END
     my $res = $dbh->query($sql,
                           $info{jobid}, $info{jobid},
                           $info{qname}, $info{qname},
                           $info{src_cell}, $info{src_cell},
-                          $info{dst_cell},
-                          $info{state});
+                          @dst_cell_args, @state_args);
 
     my @jobs = $res->hashes();
 
-    DEBUG "found ".@jobs." jobs in state ".$info{state}." (".
+    my $dst_cell_str = join(',', @dst_cell_args);
+    my $state_str = join(',', @state_args);
+
+    DEBUG "found ".@jobs." job(s) in state(s) $state_str (".
           (defined($info{qname}) ? 'queue '.$info{qname}
                                  : 'any queue').
           ', '.
           (defined($info{src_cell}) ? "cell ".$info{src_cell}
                                     : "any cell").
-          " -> ".$info{dst_cell}.")";
+          " -> $dst_cell_str)";
 
     return @jobs;
 }
@@ -527,13 +562,11 @@ find_update_jobs(%) {
 
     # First, find all the jobs in our 'from state', and transition them to our
     # 'to state'
-    for my $dst_cell (@dst_cells) {
-        push(@jobs, find_jobs(dbh => $dbh,
-                              qname => $info{qname},
-                              src_cell => $info{src_cell},
-                              dst_cell => $dst_cell,
-                              state => $info{from_state}));
-    }
+    push(@jobs, find_jobs(dbh => $dbh,
+                          qname => $info{qname},
+                          src_cell => $info{src_cell},
+                          dst_cell => \@dst_cells,
+                          state => $info{from_state}));
 
     for my $job (@jobs) {
         update_job(dbh => $dbh,
@@ -549,14 +582,11 @@ find_update_jobs(%) {
     # transitioned above, since someone could have reset a job back to this
     # state, or something similar.
     @jobs = ();
-    for my $dst_cell (@dst_cells) {
-        push(@jobs, find_jobs(dbh => $dbh,
-                              qname => $info{qname},
-                              src_cell => $info{src_cell},
-                              dst_cell => $dst_cell,
-                              state => $info{to_state}));
-    }
-
+    push(@jobs, find_jobs(dbh => $dbh,
+                          qname => $info{qname},
+                          src_cell => $info{src_cell},
+                          dst_cell => \@dst_cells,
+                          state => $info{to_state}));
 
     return @jobs;
 }
