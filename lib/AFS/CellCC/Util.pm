@@ -23,7 +23,7 @@ use File::stat;
 use Filesys::Df;
 
 use AFS::CellCC::Config qw(config_get);
-use AFS::CellCC::DB qw(update_job);
+use AFS::CellCC::DB qw(db_rw update_job);
 
 use POSIX qw(WNOHANG WIFSIGNALED WTERMSIG WIFEXITED WEXITSTATUS);
 
@@ -277,23 +277,33 @@ _unpretty_bytes($) {
 }
 
 # When there is not enough space free to store a dump blob on the local scratch
-# disk, call this to revert the job to the given state.
+# disk, call this to revert the jobs to the given state.
 sub
 _scratch_rollback($$) {
-    my ($job, $state) = @_;
-    update_job(jobid => $job->{jobid},
-               dvref => \$job->{dv},
-               to_state => $state,
-               timeout => undef,
-               description => "Waiting for enough scratch disk space to be free");
+    my ($jobsref, $state) = @_;
+    db_rw(sub($) {
+        my ($dbh) = @_;
+        for my $job (@$jobsref) {
+            update_job(dbh => $dbh,
+                       jobid => $job->{jobid},
+                       dvref => \$job->{dv},
+                       to_state => $state,
+                       timeout => undef,
+                       description => "Waiting for enough scratch disk space to be free");
+        }
+    });
 }
 
 # This checks if there is enough disk space free in a scratch directory. If
-# there is not enough space, we log a warning and roll back the job to a known
-# state we can retry.
+# there is not enough space, we log a warning and roll back the jobs to a known
+# state we can retry. All of the jobs in $jobsref must be for the same volume,
+# from the same incremental time, and so they can use the same dump file.
+# Knowing that, we only count the space used by one copy of the volume, since
+# we'll only dump the volume once for all of the jobs in $jobsref.
 sub
 scratch_ok($$$$$) {
-    my ($job, $prev_state, $size, $scratch_dir, $scratch_min) = @_;
+    my ($jobsref, $prev_state, $size, $scratch_dir, $scratch_min) = @_;
+    my @jobs = @$jobsref;
 
     if (!defined($scratch_min)) {
         DEBUG "skipping scratch_ok check";
@@ -304,6 +314,8 @@ scratch_ok($$$$$) {
 
     $scratch_min = _unpretty_bytes($scratch_min);
 
+    my $jobids = join(',', map { $_->{'jobid'} } @jobs);
+
     my $statfs = df($scratch_dir)
         or die("Cannot get filesystem info for $scratch_dir: $!\n");
 
@@ -311,10 +323,10 @@ scratch_ok($$$$$) {
     if ($size > $bytes_free) {
         my $pretty_free = pretty_bytes($bytes_free);
 
-        WARN "job $job->{jobid} needs $size in $scratch_dir, but only ".
+        WARN "job(s) $jobids need $size in $scratch_dir, but only ".
              "$pretty_free are free";
-        WARN "Not proceeding with job $job->{jobid}";
-        _scratch_rollback($job, $prev_state);
+        WARN "Not proceeding with job(s) $jobids";
+        _scratch_rollback($jobsref, $prev_state);
         return 0;
     }
 
@@ -323,17 +335,17 @@ scratch_ok($$$$$) {
         my $pretty_left = pretty_bytes($bytes_left);
         my $pretty_min = pretty_bytes($scratch_min);
 
-        WARN "job $job->{jobid} ($pretty_size) would leave only $pretty_left ".
+        WARN "job(s) $jobids ($pretty_size) would leave only $pretty_left ".
              "free in $scratch_dir, but we need $pretty_min";
-        WARN "Not proceeding with job $job->{jobid}";
-        _scratch_rollback($job, $prev_state);
+        WARN "Not proceeding with job(s) $jobids";
+        _scratch_rollback($jobsref, $prev_state);
         return 0;
     }
 
     $bytes_left .= " (".pretty_bytes($bytes_left).")";
     $scratch_min .= " (".pretty_bytes($scratch_min).")";
 
-    DEBUG "job $job->{jobid} size $size leaves scratch dir $scratch_dir with ".
+    DEBUG "job(s) $jobids size $size leave scratch dir $scratch_dir with ".
           "$bytes_left free space, which is more than the configured minimum of ".
           "$scratch_min";
 
@@ -347,8 +359,8 @@ scratch_ok($$$$$) {
 # checksum is the checksum of the file received as an argument.
 # This checksum will be in hexadecimal form.
 sub
-calc_checksum($$$$$$) {
-    my ($dumpfh, $filesize, $algo, $jobid, $dvref, $state) = @_;
+calc_checksum($$$$$) {
+    my ($jobsref, $dumpfh, $filesize, $algo, $state) = @_;
 
     if ($filesize < 0) {
         die("The size of the file ($filesize) cannot be negative\n");
@@ -389,11 +401,17 @@ calc_checksum($$$$$$) {
             $bytes = pretty_bytes($pos);
             $descr = "Checksumming dump blob ($bytes / $total)";
 
-            update_job(jobid => $jobid,
-                       dvref => $dvref,
-                       to_state => $state,
-                       timeout => 120,
-                       description => $descr);
+            db_rw(sub ($) {
+                my ($dbh) = @_;
+                for my $job (@$jobsref) {
+                    update_job(dbh => $dbh,
+                               jobid => $job->{jobid},
+                               dvref => \$job->{dv},
+                               to_state => $state,
+                               timeout => 120,
+                               description => $descr);
+                }
+            });
             $start = time();
         }
     }
