@@ -46,9 +46,11 @@ cmd_startsync($) {
     my ($argv) = @_;
     my $qname;
     my $delete = 0;
+    my $forcedelete = 0;
 
     GetOptionsFromArray($argv, 'queue=s' => \$qname,
-                               'delete' => \$delete) or parse_error();
+                               'delete' => \$delete,
+                               'force-delete' => \$forcedelete) or parse_error();
 
     if (@$argv != 2) {
         die('usage');
@@ -56,7 +58,8 @@ cmd_startsync($) {
 
     my ($src_cell, $volname) = @$argv;
 
-    my @jobs = AFS::CellCC::startsync($qname, $src_cell, $volname, {delete => $delete});
+    my @jobs = AFS::CellCC::startsync($qname, $src_cell, $volname, {delete => $delete,
+                                                                    forcedelete => $forcedelete});
     for my $job (@jobs) {
         print "[jobid $job->{jobid}]: volume $volname, cell $src_cell -> $job->{cell}\n";
     }
@@ -311,7 +314,7 @@ main($$) {
 
         'start-sync' => { func => \&cmd_startsync,
                           admin => 1,
-                          usage => "[--queue <qname>] [--delete] <src_cell> <volume_name>",
+                          usage => "[--queue <qname>] [--delete] [--force-delete] <src_cell> <volume_name>",
                         },
 
         'dump-server' => { func => \&cmd_dumpserver,
