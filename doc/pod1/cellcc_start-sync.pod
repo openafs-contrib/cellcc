@@ -4,7 +4,7 @@ cellcc_start-sync - Start a volume sync from one AFS cell to another
 
 =head1 SYNOPSIS
 
-B<cellcc start-sync> [B<--queue> <I<qname>>] [B<--delete>] <I<src_cell>>
+B<cellcc start-sync> [B<--queue> <I<qname>>] [B<--delete>] [B<--force-delete>] <I<src_cell>>
     <I<volume_name>>
 
 =head1 DESCRIPTION
@@ -45,6 +45,11 @@ volume in all destination cells, instead of trying to sync data.
 It is intended to run this command after the volume has been deleted in the
 source cell. B<cellcc start-sync> checks first if the volume still exists in
 the source cell, and throws an error if the volume still exists.
+
+=item B<--force-delete>
+
+Same as B<--delete> but B<cellcc start-sync> does not check if the volume
+still exists in the source cell.
 
 =back
 

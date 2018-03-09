@@ -50,7 +50,7 @@ _exclude_volume($$$$$) {
     }
 
     my $operation = 'sync';
-    if ($opts->{delete}) {
+    if ($opts->{delete} || $opts->{forcedelete}) {
         $operation = 'delete';
     }
 
@@ -126,8 +126,8 @@ startsync($$$;$) {
         $opts = {};
     }
 
-    if ($opts->{delete}) {
-        if (volume_exists($volname, $src_cell)) {
+    if ($opts->{delete} || $opts->{forcedelete}) {
+        if (!$opts->{forcedelete} && volume_exists($volname, $src_cell)) {
             die("Error: Volume $volname still exists in cell $src_cell\n");
         }
         $start_state = 'DELETE_NEW';
