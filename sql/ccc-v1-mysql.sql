@@ -26,9 +26,8 @@ CREATE TABLE jobs (
     /* The name of the volume we're copying. */
     volname VARCHAR(255) NOT NULL,
 
-    /* For now, this is not used. In the future, we could store the
-     * 'Last Update' time for the destination volume here (Unix timestamp), to
-     * allow for incremental dumps to be done. */
+    /* The 'Last Update' time for the volume in the destination cell, if we are
+     * configured to use incremental dumps. */
     vol_lastupdate BIGINT NOT NULL DEFAULT 0,
 
     /* What queue this job is for. */
