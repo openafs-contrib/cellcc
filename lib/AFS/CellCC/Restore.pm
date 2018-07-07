@@ -266,18 +266,11 @@ _do_xfer($$) {
                description => "Retrieved dump file, waiting to restore to local cell");
 }
 
-# Create the volume associated with the given $job in the destination cell.
-# This should be called only if the volume doesn't exist in the destination
-# cell.
+# Return an array of (site, partition) where the non-existing volume / replica
+# should be created. The first element will be used as the RW site.
 sub
-_create_volume($$) {
-    my ($job, $state) = @_;
-
-    update_job(jobid => $job->{jobid},
-               dvref => \$job->{dv},
-               from_state => $state,
-               timeout => 1200,
-               description => "Creating volume");
+_pick_sites($) {
+    my ($job) = @_;
 
     my $command = "CELLCC_PS_VOLUME='$job->{volname}' ".
                   "CELLCC_PS_CELL='$job->{dst_cell}' ".
@@ -312,18 +305,23 @@ _create_volume($$) {
     if (scalar(@sites) < 1) {
         die("pick-sites gave us too few sites (need at least 1)\n");
     }
+    return @sites;
+}
+
+# Create the replicas associated with the given $job in the destination cell.
+# This should be called only if the replicas do not exist in the destination
+# cell.
+sub
+_create_replicas($$@) {
+    my ($job, $state, @sites) = @_;
+
+    update_job(jobid => $job->{jobid},
+               dvref => \$job->{dv},
+               from_state => $state,
+               timeout => 1200,
+               description => "Creating replicas");
 
     my $vos = vos_auth();
-
-    my $rwserver = $sites[0]->{server};
-    my $rwpartition = $sites[0]->{partition};
-
-    $vos->create(server => $rwserver,
-                 partition => $rwpartition,
-                 name => $job->{volname},
-                 maxquota => 1,
-                 cell => $job->{dst_cell})
-    or die("vos create error: ".$vos->errors());
 
     for my $site (@sites) {
         $vos->addsite(id => $job->{volname},
@@ -333,23 +331,11 @@ _create_volume($$) {
             or die("vos addsite error: ".$vos->errors());
     }
 
-    if (@sites) {
-        $vos->release(id => $job->{volname}, cell => $job->{dst_cell})
-            or die("vos release error: ".$vos->errors());
-    }
-
-    $vos->offline(id => $job->{volname},
-                  server => $rwserver,
-                  partition => $rwpartition,
-                  cell => $job->{dst_cell})
-    or die("vos offline error: ".$vos->errors());
-
-
     update_job(jobid => $job->{jobid},
                dvref => \$job->{dv},
                from_state => $state,
                timeout => 1200,
-               description => "Volume created, checking volume");
+               description => "Replicas created");
 }
 
 # Do what is needed after a volume has been successfully restored. Currently
@@ -381,6 +367,10 @@ _do_restore($$) {
     my ($job, $start_state) = @_;
     my $work_state = 'RESTORE_WORK';
     my $done_state = 'RESTORE_DONE';
+    my $new_volume = 0;
+    my $server;
+    my $partition;
+    my @sites;
 
     update_job(jobid => $job->{jobid},
                dvref => \$job->{dv},
@@ -390,12 +380,18 @@ _do_restore($$) {
                description => "Checking local volume state");
 
     if (!volume_exists($job->{volname}, $job->{dst_cell})) {
-        _create_volume($job, $work_state);
+        $new_volume = 1;
     }
 
-    my ($server, $partition) = find_volume(name => $job->{volname},
-                                           type => 'RW',
-                                           cell => $job->{dst_cell});
+    if (!$new_volume) {
+        ($server, $partition) = find_volume(name => $job->{volname},
+                                            type => 'RW',
+                                            cell => $job->{dst_cell});
+    } else {
+        @sites = _pick_sites($job);
+        $server = $sites[0]->{server};
+        $partition = $sites[0]->{partition};
+    }
 
     my $dump_path = File::Spec->catfile(config_get('restore/scratch-dir'),
                                         $job->{restore_filename});
@@ -444,6 +440,10 @@ _do_restore($$) {
                from_state => $work_state,
                timeout => 60,
                description => "vos restore done, cleaning up dump");
+
+    if ($new_volume) {
+        _create_replicas($job, $work_state, @sites);
+    }
 
     _restore_success($job);
 
