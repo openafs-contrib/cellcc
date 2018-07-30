@@ -239,17 +239,18 @@ find_volume(%) {
             die("Error: vldb entry ".$entry->name." is locked; volume may not be stable");
         }
         for my $site ($entry->getVLDBSites()) {
-            if ($site->status) {
-                die("Error: vldb entry ".$entry->name." site has status '".$site->status."'; ".
-                    "volume may not be stable\n");
-            }
             DEBUG "vlentry ".$entry->name." site ".$site->type." ".$site->server." ".$site->partition;
             if ($site->type eq $args{type}) {
                 if ($args{server} && !_site_eq($site->server, $args{server})) {
                     next;
                 }
+                if ($site->status and $site->status ne "New release") {
+                    die("Error: vldb entry ".$entry->name." site has status '"
+                        .$site->status."'; "."volume may not be stable\n");
+                }
                 $server = $site->server;
                 $partition = $site->partition;
+                last;
             }
         }
     }
