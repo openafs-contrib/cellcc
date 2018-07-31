@@ -333,11 +333,6 @@ _create_volume($$) {
             or die("vos addsite error: ".$vos->errors());
     }
 
-    if (@sites) {
-        $vos->release(id => $job->{volname}, cell => $job->{dst_cell})
-            or die("vos release error: ".$vos->errors());
-    }
-
     $vos->offline(id => $job->{volname},
                   server => $rwserver,
                   partition => $rwpartition,
