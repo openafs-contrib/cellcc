@@ -132,8 +132,8 @@ retry_job($) {
     }
 
     if ($job->{errors} < config_get('check/error-limit')) {
-        WARN "Job $jobid has only seen $job->{errors}, which is below the ".
-             "limit of ".config_get('check/error-limit');
+        WARN "Job $jobid has only seen $job->{errors} errors, which is below ".
+             "the limit of ".config_get('check/error-limit');
         WARN "This job should be retried automatically by the check-server, ".
              "but we will retry it now anyway, as requested."
     }
