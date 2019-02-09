@@ -62,6 +62,37 @@ _retry_state($$) {
         RESTORE_WORK => 'RESTORE_START',
         RELEASE_WORK => 'RELEASE_START',
         DELETE_DEST_WORK => 'DELETE_DEST_START',
+
+        # States like *_START and *_DONE don't need to be "rolled back" to any
+        # prior state, since no work is done in those states; we just grab a
+        # job in e.g. *_START to move to *_WORK to do the actual work. So for
+        # these, we just reset them back to the same state they were in,
+        # allowing the relevant transition to be retried.
+        #
+        # You might wonder how these jobs end up ERROR'd at all, but this can
+        # happen if, for example, we encounter a database error when trying to
+        # do the transition from _START to _WORK. Those errors are probably
+        # indeed transient, since we needed to hit the db to transition the job
+        # to ERROR at all, so retrying these jobs makes sense.
+
+        NEW => 'NEW',
+        DELETE_NEW        => 'DELETE_NEW',
+        DELETE_DEST_START => 'DELETE_DEST_START',
+
+        EXAM_START => 'EXAM_START',
+        EXAM_DONE  => 'EXAM_DONE',
+
+        DUMP_START => 'DUMP_START',
+        DUMP_DONE  => 'DUMP_DONE',
+
+        XFER_START => 'XFER_START',
+        XFER_DONE  => 'XFER_DONE',
+
+        RESTORE_START => 'RESTORE_START',
+        RESTORE_DONE  => 'RESTORE_DONE',
+
+        RELEASE_START => 'RELEASE_START',
+        RELEASE_DONE  => 'RELEASE_DONE',
     );
 
     if (!(exists $table{$old_state})) {
@@ -132,8 +163,8 @@ retry_job($) {
     }
 
     if ($job->{errors} < config_get('check/error-limit')) {
-        WARN "Job $jobid has only seen $job->{errors}, which is below the ".
-             "limit of ".config_get('check/error-limit');
+        WARN "Job $jobid has only seen $job->{errors} errors, which is below ".
+             "the limit of ".config_get('check/error-limit');
         WARN "This job should be retried automatically by the check-server, ".
              "but we will retry it now anyway, as requested."
     }
