@@ -211,6 +211,10 @@ dumpserver($$$;$) {
 
         my $seconds = config_get('dump/check-interval');
         sleep($seconds);
+
+        # Reap any finished children now, in case it takes a long time for us
+        # to call $pm->start() again.
+        $pm->reap_finished_children();
     }
 
     $pm->wait_all_children();
