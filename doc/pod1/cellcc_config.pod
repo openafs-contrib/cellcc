@@ -449,6 +449,26 @@ This indicates how many restores the restore-server will perform in parallel
 for volume sync jobs in the queue named by <I<qname>>. An explanation of queues
 can be found in the manpage for L<cellcc_start-sync(1)>.
 
+=item B<restore/queues/><I<qname>>B<release/flags>
+
+This can be used to pass extra options to the "vos release" command line when
+CellCC releases a volume. These options are specific to the queue named by
+<I<qname>> and must be given as an associative array as accepted by
+AFS::Command, with the option name as the key and its argument as the value. For
+example, to pass "-encrypt", specify the following:
+
+  restore: {
+    queues: {
+      <qname>: {
+        release: {
+          flags: {
+            encrypt: 1,
+          },
+        },
+      },
+    },
+  },
+
 =item B<xfer/monitor-intervals>
 
 This is the same as B<dump/monitor-intervals>, but is for the restore-server
