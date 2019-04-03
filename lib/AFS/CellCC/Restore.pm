@@ -471,10 +471,18 @@ _do_release($$) {
     my $pid = spawn_child(name => 'vos release handler',
                           stderr => $stderr_fh->filename,
                           cb => sub {
+        my %args;
+        my %flags = %{ config_get("restore/queues/$job->{qname}/release/flags") };
         my $vos = vos_auth();
-        $vos->release(id => $job->{volname},
-                      cell => $job->{dst_cell})
-        or die("vos release error: ".$vos->errors());
+
+        $args{id} = $job->{volname};
+        $args{cell} = $job->{dst_cell};
+
+        while (my ($key, $value) = each %flags) {
+            $args{$key} = $value;
+        }
+
+        $vos->release(%args) or die("vos release error: ".$vos->errors());
     });
 
     monitor_child($pid, { name => 'vos release handler',

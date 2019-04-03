@@ -107,6 +107,8 @@ my @directives = (
     { key => 'restore/check-interval', default => 60, },
     { key => 'restore/queues', type => 'HASH', default => {}, },
     { key => qr:^restore/queues/[^/]+/max-parallel$:, default => 1, },
+    { key => qr:^restore/queues/[^/]+/release/flags$:, type => 'HASH', default => {}, },
+    { key => qr:^restore/queues/[^/]+/release/flags/[^/]+$:, },
 
     { key => 'xfer/monitor-intervals', default => $_default_check_intervals,
       type => 'ARRAY', },
