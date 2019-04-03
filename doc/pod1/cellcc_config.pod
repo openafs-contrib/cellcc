@@ -443,13 +443,13 @@ of the dump-server. See B<dump/scratch-minfree>.
 This is identical to B<dump/check-interval>, but for the restore-server instead
 of the dump-server.
 
-=item B<restore/queues/><I<qname>>B<max-parallel>
+=item B<restore/queues/><I<qname>>B</max-parallel>
 
 This indicates how many restores the restore-server will perform in parallel
 for volume sync jobs in the queue named by <I<qname>>. An explanation of queues
 can be found in the manpage for L<cellcc_start-sync(1)>.
 
-=item B<restore/queues/><I<qname>>B<release/flags>
+=item B<restore/queues/><I<qname>>B</release/flags>
 
 This can be used to pass extra options to the "vos release" command line when
 CellCC releases a volume. These options are specific to the queue named by
