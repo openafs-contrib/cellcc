@@ -79,11 +79,18 @@ my @directives = (
     { key => 'db/ro/user', },
     { key => 'db/ro/pass', },
 
+    { key => 'db/ro/options', type => 'HASH', default => {}, },
+    { key => qr:^db/ro/options/[^/]+$:, },
+
     { key => 'db/rw/dsn',
       default => sub { config_get('db/ro/dsn', {conf => $_[0]}) },
     },
     { key => 'db/rw/user', },
     { key => 'db/rw/pass', },
+
+    { key => 'db/rw/options', type => 'HASH',
+      default => sub { config_get('db/ro/options', {conf => $_[0]}) }, },
+    { key => qr:^db/rw/options/[^/]+$:, },
 
     { key => qr:^cells/[^/]+/dst-cells$:, type => 'ARRAY', },
 
