@@ -103,11 +103,53 @@ mysql database called "cellcc" on host db.example.com using port 3306.
 
 The username and password to use when connecting to the B<db/ro/dsn> database.
 
-=item B<db/rw/dsn>, B<db/rw/user>, B<db/rw/pass>
+=item B<db/ro/options>
+
+This specifies additional options to give to the database driver when
+connecting to the database. This can be useful in changing the timeout to use
+when communicating with the database, but any option accepted by
+B<DBI::connect> can be provided.
+
+By default, the following options are set to 300, in order to cause all
+database operations to timeout after 5 minutes for MySQL:
+
+=over 4
+
+=item *
+
+mysql_connect_timeout
+
+=item *
+
+mysql_read_timeout
+
+=item *
+
+mysql_write_timeout
+
+=back
+
+To change the timeout for all operations to 10 minutes, for example, specify
+the following:
+
+    db: {
+      ro: {
+        options: {
+          mysql_connect_timeout: 600,
+          mysql_read_timeout: 600,
+          mysql_write_timeout: 600,
+        },
+      },
+    },
+
+For more options, see the documentation for your database driver (for example,
+B<DBD::mysql>).
+
+=item B<db/rw/dsn>, B<db/rw/user>, B<db/rw/pass>, B<db/rw/options>
 
 These are the same as their B<db/ro> equivalents, but for read-write database
-access. B<db/rw/dsn> is optional, and will default to the value specified in
-B<db/ro/dsn>.
+access. B<db/rw/dsn> and B<db/rw/options> are optional, and will default to the
+corresponding value in B<db/ro>.
 
 =item B<cells/><I<cell>>B</dst-cells>
 

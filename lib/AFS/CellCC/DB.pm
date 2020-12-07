@@ -66,22 +66,55 @@ _connect($$$$) {
     return $dbh;
 }
 
+# Set defaults for the given options hashref
+sub
+_set_default_opts($) {
+    my ($opts) = @_;
+
+    # The default behavior of DBD::mysql can cause db requests to hang
+    # indefinitely in certain situations (e.g. packet loss). To avoid hanging
+    # forever, set a default timeout here (5 minutes). Only do this for mysql
+    # for now, since users have reported hangs for mysql; if other db drivers
+    # need this, we can add similar timeout defaults for them here.
+    #
+    # Note that other drivers should ignore these mysql-specific directives, so
+    # we don't need to check which driver we're using.
+
+    my $timeout = 300;
+    for my $option (qw(mysql_connect_timeout mysql_read_timeout
+                       mysql_write_timeout)) {
+        if (!exists($opts->{$option})) {
+            $opts->{$option} = $timeout;
+        }
+    }
+}
+
 # Connect to the db with a read/write connection
 sub
 connect_rw() {
+    my %opts = %{ config_get('db/rw/options') };
+
+    $opts{AutoCommit} = 0;
+    _set_default_opts(\%opts);
+
     return _connect(config_get('db/rw/dsn'),
                     config_get('db/rw/user'),
                     config_get('db/rw/pass'),
-                    { AutoCommit => 0});
+                    \%opts);
 }
 
 # Connect to the db with a readonly connection
 sub
 connect_ro() {
+    my %opts = %{ config_get('db/ro/options') };
+
+    $opts{ReadOnly} = 1;
+    _set_default_opts(\%opts);
+
     return _connect(config_get('db/ro/dsn'),
                     config_get('db/ro/user'),
                     config_get('db/ro/pass'),
-                    { ReadOnly => 1 });
+                    \%opts);
 }
 
 # Run the given code with a read/write db connection. Use like so:
