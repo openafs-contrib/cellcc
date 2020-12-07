@@ -29,7 +29,7 @@ our @EXPORT_OK = qw($PREFIX
                     $BLOB_DIR
 );
 
-our $VERSION = "1.020";
+our $VERSION = "1.021";
 our $VERSION_STRING = "v$VERSION";
 $VERSION_STRING =~ s/[.]0+/./g;
 $VERSION_STRING =~ s/[.][.]/.0./g;
