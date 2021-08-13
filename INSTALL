@@ -14,6 +14,9 @@ CellCC requires a few pieces of software to run:
  - remctl
  - Various perl modules automatically detected by packaging
 
+AFS::Command exists in CPAN, but a version with some additional fixes is
+available at <https://github.com/openafs-contrib/afs-command>.
+
 CellCC also requires a few things in your environment to do anything useful:
 
  - At least two OpenAFS cells
@@ -50,13 +53,18 @@ should install the RPM or other packaging to get all of the stuff you need.
 RPM
 ===
 
-In the 'packaging' dir, there is some crude scripting to help generate RPMs.
-You should be able to just run the following to create an RPM for
-RHEL7/CentOS7:
+In the 'packaging' dir, there is some crude scripting to help generate RPMs
+suitable for RHEL/CentOS 6-8 and Fedora 33-34. Run the following to create such
+an RPM:
 
-  $ ./packaging/rules rpm7
+  $ ./packaging/rules rpm
 
 See './packaging/rules help' for other targets.
+
+On RHEL/CentOS 6-8, our packaging depends on packages in EPEL. On RHEL/CentOS
+8, you also need to enable the "powertools" repo:
+
+  $ dnf config-manager --set-enabled powertools
 
 Note that the RPM packaging does not explicitly require everything we need. It
 is missing dependencies for the following:
