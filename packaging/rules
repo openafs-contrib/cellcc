@@ -15,14 +15,14 @@ clean:
 	rm -f cellcc-*.tar.gz packaging/SRPMS/*.src.rpm packaging/RPMS/*/*.rpm packging/BUILD/*
 
 tgz:
-	tmpfile=`mktemp --tmpdir cellcc-tgz.XXXXXX` ; \
+	tmpfile=`mktemp --tmpdir cellcc-tgz.XXXXXX` && \
 	tar --exclude='.git*' \
 	    --exclude='*.tar.gz' \
 	    --exclude='*.rpm' \
 	    --exclude='*.swp' \
 	    --transform "s,^[.],cellcc-$(VERSION)," \
-	    -czf "$$tmpfile" . ; \
-	mkdir -p packaging/SOURCES ; \
+	    -czf "$$tmpfile" . && \
+	mkdir -p packaging/SOURCES && \
 	mv "$$tmpfile" packaging/SOURCES/cellcc-v$(VERSION).tar.gz
 	@echo
 	@echo Tarball is in packaging/SOURCES/cellcc-v$(VERSION).tar.gz
