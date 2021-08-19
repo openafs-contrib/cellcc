@@ -3,7 +3,7 @@ Version:        %{cccver}
 Release:        1%{?dist}
 Summary:        CellCC AFS cross-cell synchronization tool
 
-License:        Proprietary
+License:        ISC
 URL:            http://www.sinenomine.net/
 Source0:        cellcc-v%{cccver}.tar.gz
 
