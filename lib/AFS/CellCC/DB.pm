@@ -20,7 +20,9 @@ use warnings;
 use Carp;
 use DBIx::Simple;
 use DateTime::Format::MySQL;
+use Time::HiRes qw(sleep);
 use Log::Log4perl qw(:easy);
+use List::Util qw(min);
 
 use AFS::CellCC::Config qw(config_get);
 
@@ -125,20 +127,61 @@ connect_ro() {
 sub
 db_rw(&) {
     my ($sub) = @_;
-    my $dbh = connect_rw();
-    eval {
-        $sub->($dbh)
-    };
-    if ($@) {
-        my $error = $@;
+
+    my $error;
+    my $max_attempts = 4;
+
+    for my $attempt (1..$max_attempts) {
+        my $dbh = connect_rw();
+        eval {
+            $sub->($dbh)
+        };
+        if (!$@) {
+            $dbh->commit();
+            $dbh->disconnect();
+            return;
+        }
+        $error = $@;
+        # Check for MySQL/MariaDB driver and Deadlock Error (1213). MySQL and
+        # MariaDB shares the exact same error code (1213) for deadlocks.
+        my $is_deadlock = ($dbh->dbh->{Driver}->{Name} =~ /^(?:mysql|MariaDB)$/
+                           && $dbh->dbh->err == 1213);
         eval {
             $dbh->rollback();
         };
         $dbh->disconnect();
-        die($error);
+
+        if ($is_deadlock && ($attempt < $max_attempts)) {
+            my $cur_retry = $attempt;
+            my $max_retries = $max_attempts - 1;
+
+            INFO "Retrying internal MySQL/MariaDB deadlock (retry $cur_retry of " .
+                 "$max_retries). This is normal behavior under load, and does " .
+                 "not indicate a problem unless this message appears overly ".
+                 "frequently.";
+
+            # Deadlock errors are more likely when the database is under heavy
+            # load. Retrying immediately may lead to another deadlock. To avoid
+            # this, we sleep for a short, increasing amount of time before each
+            # retry attempt.
+
+            # For the 1st retry, sleep between 100ms and 150ms.
+            # For the final retry, sleep between 400ms and 600ms.
+            my @delay_values = (100, 200, 400);
+            my $jitter_factor = 0.5;
+
+            my $index = min($cur_retry - 1, $#delay_values);
+            my $base_delay = $delay_values[$index];
+            my $jitter = rand($base_delay * $jitter_factor);
+
+            my $delay = ($base_delay + $jitter) / 1000.0;
+            sleep($delay);
+        } else {
+            # Non-retryable error.
+            last;
+        }
     }
-    $dbh->commit();
-    $dbh->disconnect();
+    die($error);
 }
 
 # Run the given code with a readonly db connection. Use like so:
